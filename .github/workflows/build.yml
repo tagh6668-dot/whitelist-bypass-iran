@@ -35,7 +35,12 @@ jobs:
           cd relay
           GOOS=windows GOARCH=386 go build -trimpath -ldflags="-s -w" -o ../windows-client-32.exe .
 
-      - name: Build Ubuntu Server Client
+      - name: Build Ubuntu Server Creator (Server)
+        run: |
+          cd headless/bale
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../../ubuntu-server-creator .
+
+      - name: Build Ubuntu Server Joiner (Client)
         run: |
           cd headless/bale-joiner
           GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../../ubuntu-server-joiner .
@@ -47,6 +52,7 @@ jobs:
           path: |
             android-client-v8a
             windows-client-32.exe
+            ubuntu-server-creator
             ubuntu-server-joiner
 
       - name: Create GitHub Release
@@ -61,6 +67,7 @@ jobs:
           files: |
             android-client-v8a
             windows-client-32.exe
+            ubuntu-server-creator
             ubuntu-server-joiner
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
