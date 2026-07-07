@@ -1,20 +1,20 @@
-# مستندات معماری پروژه (Project Architecture Specification)
+# Project Architecture Specification
 
-این سند برای راهنمایی توسعه‌دهندگان بعدی جهت درک عمیق ساختار پروژه، پروتکل‌های ارتباطی و چگونگی جریان داده (Data Flow) در پروژه **whitelist-bypass-iran** تهیه شده است.
-
----
-
-## ۱. نمای کلی پروژه (High-Level Overview)
-
-هدف اصلی پروژه، **دور زدن محدودیت‌های شدید اینترنت و سیستم‌های لیست سفید (Whitelisting)** از طریق تونل کردن ترافیک خام IP/TCP بر بستر پلتفرم‌های تماس ویدیویی مورد اعتماد (در این نسخه، پلتفرم ایرانی **بله - Bale Meet**) با استفاده از فناوری **WebRTC** است.
-
-از آنجا که سیستم فیلترینگ ترافیک این پلتفرم بومی را به صورت کامل مجاز دانسته و بسته‌های صوتی/تصویری آن را مسدود نمی‌کند، پروژه با شبیه‌سازی یک تماس ویدیویی معمولی و جاسازی (Inject) ترافیک رمزنگاری‌شده درون بسته‌های مالتی‌مدیا (به طور خاص فریم‌های ویدیویی **VP8** یا از طریق کانال داده **WebRTC DataChannel**)، یک لایه انتقال غیرقابل شناسایی پدید می‌آورد.
+This document provides a factual specification of the codebase structure, communication protocols, and data flow for the **whitelist-bypass-iran** project to assist incoming developers.
 
 ---
 
-## ۲. معماری اجزا (Component Architecture)
+## 1. High-Level Overview
 
-پروژه به صورت یک معماری ماژولار توزیع شده است:
+The primary goal of the project is to tunnel raw IP/TCP traffic over WebRTC connections utilizing trusted messaging platforms (specifically, the Iranian video calling platform **Bale Meet**). 
+
+By simulating a standard WebRTC video call session, the project embeds encrypted and multiplexed network traffic inside video-encoded payloads (specifically fake **VP8** frames or via standard WebRTC **DataChannels**) to bypass whitelisted network restrictions.
+
+---
+
+## 2. Component Architecture
+
+The codebase is organized in a modular structure:
 
 ```
 +---------------------------------------------------------------------------------------------------------+
@@ -50,62 +50,45 @@
 +---------------------------------------------------------------------------------------------------------+
 ```
 
-### الف. هسته مرکزی (Go Relay - پوشه `relay/`)
-هسته اصلی پروژه به زبان Go نوشته شده است و شامل بخش‌های زیر است:
-1. **`relay/main.go`**: نقطه شروع برنامه که پارامترها و پرچم‌های ورودی (مانند حالت اجرا، پورت SOCKS5 و اطلاعات اعتبارسنجی) را مدیریت می‌کند.
-2. **`relay/bale/`**: پیاده‌سازی پروتکل اختصاصی پیام‌رسان بله (بر پایه مکانیزم‌های سریال‌سازی protobuf دست‌نویس سبک و اتصال از طریق WebSocket). وظیفه احراز هویت ناشناس (Anonymous Authentication)، ایجاد یا پیوستن به گروه تماس (Group Call) و استخراج توکن‌های Livekit را داراست.
+### A. Core Relay (Go - `relay/` directory)
+The backend relay implementation contains the following sub-packages and source files:
+
+1. **`relay/main.go`**: Program entry point. Parses command-line arguments (such as mode, SOCKS5 ports, and credentials) and initializes the client joiner.
+2. **`relay/bale/`**: Implements communication protocols for the Bale messaging system based on a custom, lightweight Protobuf parser (`wire.go` / `meet.go`). It handles anonymous authentication, session signaling via WebSocket, and Livekit token retrieval.
 3. **`relay/tunnel/`**:
-   - **`protocol.go`**: تعریف فریم‌ورک فریم‌ها و پیام‌ها (`MsgConnect`، `MsgData`، `MsgClose`، `MsgUDP` و غیره) برای مالتی‌پلکس کردن کانال‌های مختلف بر روی یک تونل واحد.
-   - **`obfuscator.go`**: وظیفه امنیت و مخفی‌سازی بسته‌ها. کلید رمزنگاری با تابع SHA-256 از انتهای لینک تماس بله مشتق می‌شود. داده‌ها با الگوریتم **XChaCha20-Poly1305 (AEAD)** رمزنگاری شده و یک مقدار Epoch برای جلوگیری از حملات Replay و شناسایی ریستارت کلاینت اضافه می‌گردد. همچنین پیشوندهای فریم‌های جعلی VP8 برای پنهان‌سازی ساختار در اینجا قرار دارند.
-   - **`relay_bridge.go`**: پل ارتباطی بین سرور پراکسی SOCKS5 محلی و تونل داده. ترافیک SOCKS5 ورودی را بر روی اتصالات مجازی مالتی‌پلکس کرده و مدیریت چرخه‌های اتصال/قطع اتصال را عهده‌دار است.
-   - **`vp8tunnel.go`**: بسته‌بندی داده‌های رمزنگاری شده کلاینت در غالب نمونه‌های فریم ویدیویی VP8 و ارسال آن روی یک Track صوتی/تصویری WebRTC ایستا با نرخ فریم (FPS) و دسته‌بندی (Batching) داینامیک.
-   - **`dctunnel.go`**: انتقال مستقیم ترافیک بر بستر کانال‌های داده (`DataChannel`) اختصاصی WebRTC در زمانی که فیلترینگ شدید در لایه نظارت تصویری SFU اعمال نمی‌شود.
-4. **`relay/pion/`**: مدیریت اتصالات WebRTC با استفاده از کتابخانه بومی Pion بدون نیاز به مرورگر سنگین. نسخه هِدلس کلاینت بله (`BaleHeadlessJoiner`) از این کلاس برای مذاکره SDP و تبادل کاندیداهای ICE استفاده می‌کند.
+   - **`protocol.go`**: Defines framing and control messages (`MsgConnect`, `MsgData`, `MsgClose`, `MsgUDP`, etc.) used to multiplex connections over a single transport tunnel.
+   - **`obfuscator.go`**: Implements packet obfuscation and cryptography. It derives encryption keys using SHA-256 on the meeting URL path segment, encrypts payloads using **XChaCha20-Poly1305 (AEAD)**, and prepends epoch values to prevent replay attacks and detect peer restarts.
+   - **`relay_bridge.go`**: Acts as a gateway between the local SOCKS5 proxy server and the obfuscated data tunnel, managing connection state and multiplexing virtual connections.
+   - **`vp8tunnel.go`**: Encapsulates data payloads into fake VP8 video frame structures and delivers them dynamically based on configured frame rates (FPS) and batching sizes.
+   - **`dctunnel.go`**: Implements tunneling over standard WebRTC DataChannels.
+4. **`relay/pion/`**: Handles the underlying WebRTC connections utilizing the Pion Go WebRTC library. The headless client (`BaleHeadlessJoiner`) initiates PeerConnection signaling, SDP negotiation, and ICE candidate exchange.
 
-### ب. برنامه‌های کاربر (Clients)
-*   **`android-app/`**: اپلیکیشن اندروید (کاتلین) که با استفاده از کتابخانه کامپایل‌شده اندروید (`mobile.aar`) از هسته Go استفاده کرده و یک سرویس VPN محلی (TUN) یا پراکسی بومی در تلفن‌های همراه فراهم می‌کند.
-*   **`ios-proxy-app/`**: اپلیکیشن iOS (Swift/Xcode) که به صورت یک پراکسی SOCKS5 محلی بسته‌بندی شده است.
-*   **`joiner-desktop-app/`**: اپلیکیشن دسکتاپ بر پایه Electron/Node.js که یک رابط گرافیکی شکیل جهت وارد کردن لینک تماس بله و راه‌اندازی آسان تونل به همراه کارت شبکه مجازی TUN ارائه می‌دهد.
-*   **`creator-app/`**: برنامه‌ای کمکی جهت اتصال به حساب‌های بله، ساخت خودکار لینک تماس و آماده‌سازی بسترهای وب‌سوکت برای پذیرش کاربران.
-
----
-
-## ۳. پروتکل بسته‌بندی فریم‌های ویدیویی جعلی (VP8 Packaging Protocol)
-
-برای فریب تجهیزات نظارتی عمیق شبکه (DPI) که فرمت بسته‌های ویدیویی را در سطح بیت بررسی می‌کنند، بسته‌های ارسالی در متد VP8 ساختاری دقیقاً مشابه با فریم‌های ویدیویی واقعی دارند:
-
-1. **پیشوند فریم کلیدی/میانی (VP8 Header)**: ۲ یا ۳ بایت ابتدایی بسته‌ها شامل بایت‌های هاردکد شده استاندارد VP8 است تا سیستم‌های رمزگشایی سخت‌افزاری SFU بسته‌ها را به عنوان فریم ویدیویی معتبر طبقه‌بینی کنند.
-2. **فیلد Epoch محلی (Local Epoch)**: ۴ بایت که به صورت تصادفی در هر بار اتصال کلاینت تولید شده و از حملات بازپخش (Replay Attacks) جلوگیری می‌کند.
-3. **مقدار نانس تصادفی (XChaCha20 Nonce)**: ۲۴ بایت مقدار تصادفی رمزنگاری شده برای تضمین یکتا بودن کلید رمزنگاری هر فریم.
-4. **داده‌های رمزشده (AEAD Ciphertext)**: داده خام مالتی‌پلکس شده شبکه که با کلید مشتق شده و نانس رمزنگاری شده است به همراه تگ احراز هویت ۱۶ بایتی Poly1305.
+### B. App Clients
+*   **`android-app/`**: A Kotlin-based Android application that wraps the compiled Go mobile library (`mobile.aar`) to provide a local VPN (TUN interface) or proxy service.
+*   **`ios-proxy-app/`**: A Swift-based iOS application configuring a local SOCKS5 proxy endpoint.
+*   **`joiner-desktop-app/`**: An Electron-based desktop interface for Windows, macOS, and Linux that configures a virtual TUN network interface or a local SOCKS5 proxy.
+*   **`creator-app/`**: A helper application to manage Bale accounts, automate meeting link generation, and handle WebSocket signaling configurations.
+*   **`headless/`**: A command-line client optimized for server-side execution and automated deployments.
 
 ---
 
-## ۴. دستورالعمل‌های کامپایل و توسعه (Build & Development Guide)
+## 3. VP8 Packaging Protocol Specifications
 
-توسعه‌دهندگان گرامی برای کامپایل بخش‌های مختلف پروژه می‌توانند از اسکریپت‌های پوسته (Shell Scripts) آماده در ریشه مخزن استفاده کنند:
+To ensure whitelisted traffic characteristics, data packets mapped via the VP8 method adhere to a strict media frame structure:
 
-- **کامپایل کتابخانه بومی Go برای موبایل**:
-  ```bash
-  ./build-go.sh
-  ```
-- **کامپایل نسخه دسکتاپ**:
-  ```bash
-  ./build-desktop-joiner.sh
-  ```
-- **کامپایل نسخه کلاینت هِدلس**:
-  ```bash
-  ./build-headless.sh
-  ```
-- **آماده‌سازی پکیج‌های نهایی توزیع**:
-  ```bash
-  ./make-release.sh
-  ```
+1. **VP8 Header**: The initial 2 or 3 bytes contain hardcoded VP8 frame payload descriptors so that intermediary Selective Forwarding Units (SFUs) treat them as valid video frames.
+2. **Local Epoch Field**: A 4-byte random field generated at connection initialization to block packet replays and detect restarts.
+3. **XChaCha20 Nonce**: A 24-byte random nonce ensuring unique cipher states per frame.
+4. **AEAD Ciphertext**: The encrypted network payload carrying multiplexed channel traffic, appended with a 16-byte Poly1305 authentication tag.
 
 ---
 
-## ۵. نکات کلیدی برای توسعه‌های آتی
+## 4. Build Scripts
 
-*   **انطباق با ویژگی‌های پلتفرم میزبان**: در صورتی که ساختار پیام‌های WebSocket یا پروتکل احراز هویت پلتفرم بله تغییر کند، ابتدا باید کدهای موجود در پوشه `relay/bale/` بررسی و با شبیه‌سازی مجدد درخواست‌های وب‌سایت `meet.bale.ai` به‌روزرسانی شوند.
-*   **بهبود تشخیص الگوهای ترافیکی (Traffic Shaping)**: برای بهبود پایداری در برابر فایروال‌های مجهز به هوش مصنوعی، می‌توان الگوهای حجم فریم‌های ارسالی را به نحوی شبیه‌سازی کرد که از توزیع نرمال اندازه فریم‌های ویدیویی (به جای سایز بسته‌های شبکه‌ای متغیر TCP) پیروی کنند.
-*   **پشتیبانی از پلتفرم‌های جایگزین**: ساختار مجزای بخش `relay/tunnel/` از `relay/bale/` این امکان را فراهم می‌آورد که با نوشتن ماژول‌های جدید مشابه `bale/` بتوان سیستم را به سرعت برای سایر سرویس‌های تماس ویدیویی داخلی نیز بازنویسی نمود.
+Compilation is managed through predefined shell scripts situated in the root folder:
+
+*   `build-go.sh`: Compiles Go bindings for Android (`mobile.aar`).
+*   `build-ios.sh`: Compiles Swift/Go framework bindings for iOS.
+*   `build-desktop-joiner.sh`: Bundles the Electron desktop client.
+*   `build-headless.sh`: Builds the non-GUI CLI client binary.
+*   `make-release.sh`: Bundles and packages compiled assets for release distribution.
