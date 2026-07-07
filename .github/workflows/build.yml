@@ -1,0 +1,45 @@
+name: Build Release Binaries
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build All Requested Binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+
+      - name: Build Android Client (arm64-v8a)
+        run: |
+          cd relay
+          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o ../android-client-v8a .
+
+      - name: Build Windows Client (32-bit / 386)
+        run: |
+          cd relay
+          GOOS=windows GOARCH=386 go build -trimpath -ldflags="-s -w" -o ../windows-client-32.exe .
+
+      - name: Build Ubuntu Server Client
+        run: |
+          cd headless/bale-joiner
+          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../../ubuntu-server-joiner .
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-binaries
+          path: |
+            android-client-v8a
+            windows-client-32.exe
+            ubuntu-server-joiner

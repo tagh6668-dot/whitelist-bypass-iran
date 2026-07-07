@@ -5,6 +5,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/pion/datachannel"
 )
@@ -76,10 +77,15 @@ func (t *DCTunnel) Reconfigure(_ int, _ int) {}
 
 func (t *DCTunnel) SendData(data []byte) {
 	DecodeFrames(data, func(connID uint32, msgType byte, payload []byte) {
-		buf := make([]byte, 5+len(payload))
-		binary.BigEndian.PutUint32(buf[0:4], connID)
-		buf[4] = msgType
-		copy(buf[5:], payload)
+		// Encode connID as Varint
+		var connBuf [5]byte
+		connLen := binary.PutUvarint(connBuf[:], uint64(connID))
+
+		buf := make([]byte, connLen+1+len(payload))
+		copy(buf[0:], connBuf[:connLen])
+		buf[connLen] = msgType
+		copy(buf[connLen+1:], payload)
+
 		wire := buf
 		if t.obf != nil {
 			wire = t.obf.EncryptPayload(buf)
@@ -95,6 +101,9 @@ func (t *DCTunnel) SendData(data []byte) {
 }
 
 func (t *DCTunnel) writerLoop() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-t.stopCh:
@@ -109,6 +118,20 @@ func (t *DCTunnel) writerLoop() {
 			}
 			t.sendBytes.Add(uint64(len(msg)))
 			t.sendMsgs.Add(1)
+			ticker.Reset(10 * time.Second) // Reset the keepalive timer
+		case <-ticker.C:
+			// Send a keepalive packet
+			if t.closed.Load() {
+				return
+			}
+			var keepalive []byte
+			if t.obf != nil {
+				keepalive = t.obf.EncryptPayload(nil)
+			}
+			if _, err := t.writeRaw.Write(keepalive); err != nil {
+				t.logFn("dctunnel: write error sending keepalive: %v", err)
+				return
+			}
 		}
 	}
 }
@@ -157,9 +180,18 @@ func (t *DCTunnel) deliver(wire []byte) {
 			t.OnFirstMessage()
 		}
 	})
-	frame := make([]byte, 4+len(payload))
-	binary.BigEndian.PutUint32(frame[0:4], uint32(len(payload)))
-	copy(frame[4:], payload)
+
+	// Decode connID (Varint) and msgType from payload to reconstruct standard framed payload
+	connID, n := binary.Uvarint(payload)
+	if n <= 0 || n+1 > len(payload) {
+		t.logFn("dctunnel: invalid frame header")
+		return
+	}
+	msgType := payload[n]
+	actualPayload := payload[n+1:]
+
+	frame := EncodeFrame(uint32(connID), msgType, actualPayload)
+
 	t.onMu.Lock()
 	cb := t.onData
 	if cb == nil {

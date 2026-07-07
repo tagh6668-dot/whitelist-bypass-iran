@@ -51,24 +51,51 @@ func DecodeVP8Config(payload []byte) (fps, batch int, ok bool) {
 }
 
 func EncodeFrame(connID uint32, msgType byte, payload []byte) []byte {
-	buf := make([]byte, 4+5+len(payload))
-	binary.BigEndian.PutUint32(buf[0:4], uint32(5+len(payload)))
-	binary.BigEndian.PutUint32(buf[4:8], connID)
-	buf[8] = msgType
-	copy(buf[9:], payload)
+	// Encode connID as Varint
+	var connBuf [5]byte
+	connLen := binary.PutUvarint(connBuf[:], uint64(connID))
+
+	// The remaining length after frameLen is: connLen + 1 (msgType) + len(payload)
+	remLen := connLen + 1 + len(payload)
+
+	var lenBuf [5]byte
+	lenLen := binary.PutUvarint(lenBuf[:], uint64(remLen))
+
+	buf := make([]byte, lenLen+remLen)
+	copy(buf[0:], lenBuf[:lenLen])
+	copy(buf[lenLen:], connBuf[:connLen])
+	buf[lenLen+connLen] = msgType
+	copy(buf[lenLen+connLen+1:], payload)
 	return buf
 }
 
 func DecodeFrames(data []byte, cb func(connID uint32, msgType byte, payload []byte)) {
-	for len(data) >= 4 {
-		frameLen := int(binary.BigEndian.Uint32(data[0:4]))
-		if frameLen < 5 || 4+frameLen > len(data) {
+	for {
+		if len(data) == 0 {
 			return
 		}
-		connID := binary.BigEndian.Uint32(data[4:8])
-		msgType := data[8]
-		payload := data[9 : 4+frameLen]
-		cb(connID, msgType, payload)
-		data = data[4+frameLen:]
+		remLen, n := binary.Uvarint(data)
+		if n <= 0 {
+			return // Not enough bytes to decode frameLen or invalid uvarint
+		}
+		if int(remLen) > len(data)-n {
+			return // Incomplete frame
+		}
+		frameData := data[n : n+int(remLen)]
+
+		// Decode connID
+		connID64, m := binary.Uvarint(frameData)
+		if m <= 0 {
+			return
+		}
+		if m+1 > len(frameData) {
+			return
+		}
+		msgType := frameData[m]
+		payload := frameData[m+1:]
+
+		cb(uint32(connID64), msgType, payload)
+
+		data = data[n+int(remLen):]
 	}
 }

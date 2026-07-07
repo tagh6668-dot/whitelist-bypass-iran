@@ -13,6 +13,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"golang.org/x/crypto/chacha20"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
@@ -60,6 +61,11 @@ type TunnelObfuscator struct {
 
 	encCount atomic.Uint32
 	decCount atomic.Uint32
+
+	// XOR-only ChaCha20 cipher fields
+	useXorCipher bool
+	sendCounter  atomic.Uint64
+	recvCounter  atomic.Uint64
 }
 
 func DeriveSecretFromJoinLink(joinLink string) []byte {
@@ -102,9 +108,18 @@ func NewTunnelObfuscator(secret []byte) (*TunnelObfuscator, error) {
 	if epoch == 0 {
 		epoch = 1
 	}
-	o := &TunnelObfuscator{aead: aead, localEpoch: epoch, keyHash: keyHash}
+
+	// Read environment variable or enable XOR cipher by default for minimal overhead
+	useXorCipher := os.Getenv("DISABLE_AEAD") != "false"
+
+	o := &TunnelObfuscator{
+		aead:         aead,
+		localEpoch:   epoch,
+		keyHash:      keyHash,
+		useXorCipher: useXorCipher,
+	}
 	if debugTunnel {
-		dbgLog("obf: init secretLen=%d keyHash=%s localEpoch=0x%08x", len(secret), hex.EncodeToString(keyHash[:8]), epoch)
+		dbgLog("obf: init secretLen=%d keyHash=%s localEpoch=0x%08x useXorCipher=%t", len(secret), hex.EncodeToString(keyHash[:8]), epoch, useXorCipher)
 	}
 	return o, nil
 }
@@ -145,51 +160,105 @@ func (o *TunnelObfuscator) EncodeKeepalive() []byte {
 
 func (o *TunnelObfuscator) EncodeData(payload []byte) []byte {
 	hdr := o.dataHeader()
-	nonce := make([]byte, o.aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return nil
-	}
-	out := make([]byte, 0, len(hdr)+len(nonce)+len(payload)+o.aead.Overhead())
-	out = append(out, hdr...)
-	out = append(out, nonce...)
-	out = o.aead.Seal(out, nonce, payload, nil)
-	if debugTunnel {
-		n := o.encCount.Add(1)
-		if n <= 8 {
-			dbgLog("obf: enc #%d payloadLen=%d outLen=%d payloadHex=%s", n, len(payload), len(out), hexPrefix(payload, 48))
+	if o.useXorCipher {
+		seq := o.sendCounter.Add(1)
+		var nonce [12]byte
+		binary.BigEndian.PutUint64(nonce[4:12], seq) // Implicit counter nonce
+
+		// Create 32-byte key from keyHash and set 12-byte nonce
+		c, err := chacha20.NewUnauthenticatedCipher(o.keyHash[:], nonce[:])
+		if err != nil {
+			return nil
 		}
+
+		out := make([]byte, len(hdr)+len(payload))
+		copy(out, hdr)
+
+		ciphertext := out[len(hdr):]
+		c.XORKeyStream(ciphertext, payload)
+
+		if debugTunnel {
+			n := o.encCount.Add(1)
+			if n <= 8 {
+				dbgLog("obf: enc-xor #%d payloadLen=%d outLen=%d seq=%d", n, len(payload), len(out), seq)
+			}
+		}
+		return out
+	} else {
+		nonce := make([]byte, o.aead.NonceSize())
+		if _, err := rand.Read(nonce); err != nil {
+			return nil
+		}
+		out := make([]byte, 0, len(hdr)+len(nonce)+len(payload)+o.aead.Overhead())
+		out = append(out, hdr...)
+		out = append(out, nonce...)
+		out = o.aead.Seal(out, nonce, payload, nil)
+		if debugTunnel {
+			n := o.encCount.Add(1)
+			if n <= 8 {
+				dbgLog("obf: enc-aead #%d payloadLen=%d outLen=%d payloadHex=%s", n, len(payload), len(out), hexPrefix(payload, 48))
+			}
+		}
+		return out
 	}
-	return out
 }
 
 func (o *TunnelObfuscator) EncryptPayload(plaintext []byte) []byte {
 	if o == nil {
 		return plaintext
 	}
-	nonce := make([]byte, o.aead.NonceSize())
-	if _, err := rand.Read(nonce); err != nil {
-		return nil
+	if o.useXorCipher {
+		seq := o.sendCounter.Add(1)
+		var nonce [12]byte
+		binary.BigEndian.PutUint64(nonce[4:12], seq)
+
+		c, err := chacha20.NewUnauthenticatedCipher(o.keyHash[:], nonce[:])
+		if err != nil {
+			return nil
+		}
+		out := make([]byte, len(plaintext))
+		c.XORKeyStream(out, plaintext)
+		return out
+	} else {
+		nonce := make([]byte, o.aead.NonceSize())
+		if _, err := rand.Read(nonce); err != nil {
+			return nil
+		}
+		out := make([]byte, 0, len(nonce)+len(plaintext)+o.aead.Overhead())
+		out = append(out, nonce...)
+		return o.aead.Seal(out, nonce, plaintext, nil)
 	}
-	out := make([]byte, 0, len(nonce)+len(plaintext)+o.aead.Overhead())
-	out = append(out, nonce...)
-	return o.aead.Seal(out, nonce, plaintext, nil)
 }
 
 func (o *TunnelObfuscator) DecryptPayload(data []byte) ([]byte, bool) {
 	if o == nil {
 		return data, true
 	}
-	nonceSize := o.aead.NonceSize()
-	if len(data) < nonceSize+o.aead.Overhead() {
-		return nil, false
+	if o.useXorCipher {
+		seq := o.recvCounter.Add(1)
+		var nonce [12]byte
+		binary.BigEndian.PutUint64(nonce[4:12], seq)
+
+		c, err := chacha20.NewUnauthenticatedCipher(o.keyHash[:], nonce[:])
+		if err != nil {
+			return nil, false
+		}
+		out := make([]byte, len(data))
+		c.XORKeyStream(out, data)
+		return out, true
+	} else {
+		nonceSize := o.aead.NonceSize()
+		if len(data) < nonceSize+o.aead.Overhead() {
+			return nil, false
+		}
+		nonce := data[:nonceSize]
+		ciphertext := data[nonceSize:]
+		plaintext, err := o.aead.Open(nil, nonce, ciphertext, nil)
+		if err != nil {
+			return nil, false
+		}
+		return plaintext, true
 	}
-	nonce := data[:nonceSize]
-	ciphertext := data[nonceSize:]
-	plaintext, err := o.aead.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
-		return nil, false
-	}
-	return plaintext, true
 }
 
 func (o *TunnelObfuscator) Decode(frame []byte) DecodeResult {
@@ -223,6 +292,9 @@ func (o *TunnelObfuscator) Decode(frame []byte) DecodeResult {
 	} else if o.peerEpoch != peerEpoch {
 		o.peerEpoch = peerEpoch
 		res.PeerRestart = true
+		// On peer restart, we should reset our stream cipher counters
+		o.sendCounter.Store(0)
+		o.recvCounter.Store(0)
 	}
 	o.mu.Unlock()
 
@@ -232,25 +304,47 @@ func (o *TunnelObfuscator) Decode(frame []byte) DecodeResult {
 	}
 
 	body := frame[hdrLen:]
-	nonceSize := o.aead.NonceSize()
-	if len(body) < nonceSize+o.aead.Overhead() {
-		return DecodeResult{}
-	}
-	nonce := body[:nonceSize]
-	ciphertext := body[nonceSize:]
-	plaintext, err := o.aead.Open(nil, nonce, ciphertext, nil)
-	if err != nil {
+	if o.useXorCipher {
+		seq := o.recvCounter.Add(1)
+		var nonce [12]byte
+		binary.BigEndian.PutUint64(nonce[4:12], seq)
+
+		c, err := chacha20.NewUnauthenticatedCipher(o.keyHash[:], nonce[:])
+		if err != nil {
+			return DecodeResult{}
+		}
+		plaintext := make([]byte, len(body))
+		c.XORKeyStream(plaintext, body)
+		res.Payload = plaintext
+
 		if debugTunnel {
-			dbgLog("obf: dec AEAD-fail frameLen=%d peerEpoch=0x%08x", len(frame), peerEpoch)
+			n := o.decCount.Add(1)
+			if n <= 8 {
+				dbgLog("obf: dec-xor #%d frameLen=%d peerEpoch=0x%08x payloadLen=%d seq=%d", n, len(frame), peerEpoch, len(plaintext), seq)
+			}
 		}
-		return DecodeResult{}
-	}
-	res.Payload = plaintext
-	if debugTunnel {
-		n := o.decCount.Add(1)
-		if n <= 8 {
-			dbgLog("obf: dec #%d frameLen=%d peerEpoch=0x%08x payloadLen=%d payloadHex=%s", n, len(frame), peerEpoch, len(plaintext), hexPrefix(plaintext, 48))
+		return res
+	} else {
+		nonceSize := o.aead.NonceSize()
+		if len(body) < nonceSize+o.aead.Overhead() {
+			return DecodeResult{}
 		}
+		nonce := body[:nonceSize]
+		ciphertext := body[nonceSize:]
+		plaintext, err := o.aead.Open(nil, nonce, ciphertext, nil)
+		if err != nil {
+			if debugTunnel {
+				dbgLog("obf: dec AEAD-fail frameLen=%d peerEpoch=0x%08x", len(frame), peerEpoch)
+			}
+			return DecodeResult{}
+		}
+		res.Payload = plaintext
+		if debugTunnel {
+			n := o.decCount.Add(1)
+			if n <= 8 {
+				dbgLog("obf: dec-aead #%d frameLen=%d peerEpoch=0x%08x payloadLen=%d payloadHex=%s", n, len(frame), peerEpoch, len(plaintext), hexPrefix(plaintext, 48))
+			}
+		}
+		return res
 	}
-	return res
 }

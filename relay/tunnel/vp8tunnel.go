@@ -34,6 +34,10 @@ type VP8DataTunnel struct {
 	sentFrames atomic.Uint64
 	recvFrames atomic.Uint64
 
+	// Dynamic FPS and adaptive pacing fields
+	isIdle      atomic.Bool
+	scaleUpChan chan struct{}
+
 	OnData  func([]byte)
 	OnClose func()
 }
@@ -43,14 +47,15 @@ func (t *VP8DataTunnel) SetOnClose(fn func())       { t.OnClose = fn }
 
 func NewVP8DataTunnel(track *webrtc.TrackLocalStaticSample, obf *TunnelObfuscator, logFn func(string, ...any)) *VP8DataTunnel {
 	return &VP8DataTunnel{
-		track:     track,
-		obf:       obf,
-		logFn:     logFn,
-		stopCh:    make(chan struct{}),
-		sendQueue: make(chan []byte, sendQueueDepth),
-		cfgChan:   make(chan struct{}, 1),
-		fps:       defaultVP8FPS,
-		batch:     defaultVP8Batch,
+		track:       track,
+		obf:         obf,
+		logFn:       logFn,
+		stopCh:      make(chan struct{}),
+		sendQueue:   make(chan []byte, sendQueueDepth),
+		cfgChan:     make(chan struct{}, 1),
+		scaleUpChan: make(chan struct{}, 1),
+		fps:         defaultVP8FPS,
+		batch:       defaultVP8Batch,
 	}
 }
 
@@ -98,6 +103,13 @@ func (t *VP8DataTunnel) SendData(data []byte) {
 	}
 	select {
 	case t.sendQueue <- data:
+		// If we are currently in idle state, scale up immediately
+		if t.isIdle.Swap(false) {
+			select {
+			case t.scaleUpChan <- struct{}{}:
+			default:
+			}
+		}
 	case <-t.stopCh:
 	}
 }
@@ -127,33 +139,37 @@ func (t *VP8DataTunnel) Stop() {
 	}
 }
 
-func (t *VP8DataTunnel) currentIntervals() (sampleInterval time.Duration, keepaliveEvery, fps, batch int) {
-	t.cfgMu.Lock()
-	fps = t.fps
-	batch = t.batch
-	t.cfgMu.Unlock()
-
-	frameInterval := time.Second / time.Duration(fps)
-	sampleInterval = frameInterval
-	if batch > 1 {
-		sampleInterval = frameInterval / time.Duration(batch)
-	}
-	if sampleInterval <= 0 {
-		sampleInterval = time.Millisecond
-	}
-
-	keepaliveEvery = int(keepaliveIdlePeriod / sampleInterval)
-	if keepaliveEvery < 1 {
-		keepaliveEvery = 1
-	}
-	return
-}
-
 func (t *VP8DataTunnel) writerLoop() {
+	var lastUserDataTime time.Time = time.Now()
+
 	for {
-		sampleInterval, keepaliveEvery, fps, batch := t.currentIntervals()
-		t.logFn("vp8tunnel: writer (re)started fps=%d batch=%d sampleInterval=%s keepaliveEvery=%d",
-			fps, batch, sampleInterval, keepaliveEvery)
+		isCurrentlyIdle := t.isIdle.Load()
+
+		var currentFPS, currentBatch int
+		if isCurrentlyIdle {
+			currentFPS = 1
+			currentBatch = 1
+		} else {
+			currentFPS = t.FPS()
+			currentBatch = t.Batch()
+		}
+
+		frameInterval := time.Second / time.Duration(currentFPS)
+		sampleInterval := frameInterval
+		if currentBatch > 1 {
+			sampleInterval = frameInterval / time.Duration(currentBatch)
+		}
+		if sampleInterval <= 0 {
+			sampleInterval = time.Millisecond
+		}
+
+		keepaliveEvery := int(keepaliveIdlePeriod / sampleInterval)
+		if keepaliveEvery < 1 {
+			keepaliveEvery = 1
+		}
+
+		t.logFn("vp8tunnel: writer (re)started fps=%d batch=%d sampleInterval=%s keepaliveEvery=%d idle=%t",
+			currentFPS, currentBatch, sampleInterval, keepaliveEvery, isCurrentlyIdle)
 
 		ticker := time.NewTicker(sampleInterval)
 		idleTicks := 0
@@ -166,13 +182,24 @@ func (t *VP8DataTunnel) writerLoop() {
 				return
 			case <-t.cfgChan:
 				reconfigure = true
+			case <-t.scaleUpChan:
+				t.isIdle.Store(false)
+				reconfigure = true
 			case <-ticker.C:
 				var sample []byte
 				select {
 				case data := <-t.sendQueue:
 					sample = t.obf.EncodeData(data)
 					idleTicks = 0
+					lastUserDataTime = time.Now()
 				default:
+					// If not in idle state, check if we should switch to idle state (no user data for > 1.5 seconds)
+					if !isCurrentlyIdle && time.Since(lastUserDataTime) > 1500*time.Millisecond {
+						t.isIdle.Store(true)
+						reconfigure = true
+						break
+					}
+
 					idleTicks++
 					if idleTicks < keepaliveEvery {
 						continue
@@ -180,6 +207,11 @@ func (t *VP8DataTunnel) writerLoop() {
 					idleTicks = 0
 					sample = t.obf.EncodeKeepalive()
 				}
+
+				if reconfigure {
+					break
+				}
+
 				if sample == nil {
 					continue
 				}

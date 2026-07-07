@@ -46,6 +46,9 @@ type RelayBridge struct {
 	listenerMu sync.Mutex
 	listener   net.Listener
 	closed     atomic.Bool
+
+	// Output batching queue (Optimization 1)
+	batchChan chan []byte
 }
 
 func NewRelayBridgeWithAuth(tunnel DataTunnel, mode string, readBuf int, logFn func(string, ...any), socksUser, socksPass string) *RelayBridge {
@@ -57,15 +60,52 @@ func NewRelayBridgeWithAuth(tunnel DataTunnel, mode string, readBuf int, logFn f
 
 func NewRelayBridge(tunnel DataTunnel, mode string, readBuf int, logFn func(string, ...any)) *RelayBridge {
 	rb := &RelayBridge{
-		tunnel:  tunnel,
-		logFn:   logFn,
-		mode:    mode,
-		readBuf: readBuf,
-		ready:   make(chan struct{}),
+		tunnel:    tunnel,
+		logFn:     logFn,
+		mode:      mode,
+		readBuf:   readBuf,
+		ready:     make(chan struct{}),
+		batchChan: make(chan []byte, 4096),
 	}
 	tunnel.SetOnData(rb.handleTunnelData)
 	tunnel.SetOnClose(rb.closeAll)
+	go rb.batchWorker()
 	return rb
+}
+
+func (rb *RelayBridge) batchWorker() {
+	var buf []byte
+	const maxBatchSize = 1250
+	const flushInterval = 4 * time.Millisecond
+
+	ticker := time.NewTicker(flushInterval)
+	defer ticker.Stop()
+
+	flush := func() {
+		if len(buf) > 0 {
+			rb.tunnel.SendData(buf)
+			buf = nil
+		}
+	}
+
+	for {
+		select {
+		case frame, ok := <-rb.batchChan:
+			if !ok {
+				flush()
+				return
+			}
+			if len(buf)+len(frame) > maxBatchSize {
+				flush()
+			}
+			buf = append(buf, frame...)
+			if len(buf) >= maxBatchSize {
+				flush()
+			}
+		case <-ticker.C:
+			flush()
+		}
+	}
 }
 
 func (rb *RelayBridge) closeAll() {
@@ -112,6 +152,9 @@ func (rb *RelayBridge) Close() {
 		ln.Close()
 	}
 	rb.closeAll()
+	if rb.batchChan != nil {
+		close(rb.batchChan)
+	}
 }
 
 func (rb *RelayBridge) Stats() (tcpConns, udpConns int, nextID uint32) {
@@ -132,7 +175,19 @@ func (rb *RelayBridge) send(connID uint32, msgType byte, payload []byte) {
 			rb.logFn("relay-dbg: send #%d mode=%s connID=%d msgType=0x%02x payloadLen=%d payloadHex=%s", n, rb.mode, connID, msgType, len(payload), rbHex(payload, 48))
 		}
 	}
-	rb.tunnel.SendData(frame)
+	if rb.closed.Load() {
+		return
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			rb.tunnel.SendData(frame)
+		}
+	}()
+	select {
+	case rb.batchChan <- frame:
+	default:
+		rb.tunnel.SendData(frame)
+	}
 }
 
 func (rb *RelayBridge) handleTunnelData(data []byte) {
@@ -359,33 +414,6 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 		conn.Close()
 		return
 	}
-	// Dial local/private addresses directly instead of tunneling to the creator,
-	// which cannot reach the joiner's local network. Disabled for now until
-	// there is a real use case for local network access through the proxy. So idk if 
-	// this is a bug or a feature
-	// if ip := net.ParseIP(hostOnly); ip != nil && !ip.IsGlobalUnicast() {
-	// 	rb.logFn("relay: SOCKS local dial %s", common.MaskAddr(host))
-	// 	target, dialErr := net.DialTimeout("tcp", host, 10*time.Second)
-	// 	if dialErr != nil {
-	// 		rb.logFn("relay: SOCKS local dial failed: %s", common.MaskError(dialErr))
-	// 		conn.Write(common.ConnFail)
-	// 		conn.Close()
-	// 		return
-	// 	}
-	// 	conn.Write(common.OK)
-	// 	go func() {
-	// 		defer target.Close()
-	// 		defer conn.Close()
-	// 		done := make(chan struct{})
-	// 		go func() {
-	// 			io.Copy(target, conn)
-	// 			close(done)
-	// 		}()
-	// 		io.Copy(conn, target)
-	// 		<-done
-	// 	}()
-	// 	return
-	// }
 
 	id := rb.nextID.Add(1)
 	sc := &socksConn{id: id, conn: conn, rb: rb, rdy: make(chan error, 1)}
