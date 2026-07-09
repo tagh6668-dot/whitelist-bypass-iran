@@ -23,37 +23,31 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.26.1'
+          go-version: '1.26.5'
 
-      - name: Build Android Client (arm64-v8a)
+      - name: Build Android Client Joiner (arm64-v8a)
         run: |
           cd relay
-          GOOS=linux GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o ../android-client-v8a .
+          CGO_ENABLED=0 GOOS=android GOARCH=arm64 go build -trimpath -ldflags="-s -w -checklinkname=0" -o ../joiner-android-v8a .
 
-      - name: Build Windows Client (32-bit / 386)
+      - name: Build Windows Client Joiner (32-bit / 386)
         run: |
           cd relay
-          GOOS=windows GOARCH=386 go build -trimpath -ldflags="-s -w" -o ../windows-client-32.exe .
+          CGO_ENABLED=0 GOOS=windows GOARCH=386 go build -trimpath -ldflags="-s -w" -o ../joiner-windows-32bit.exe .
 
-      - name: Build Ubuntu Server Creator (Server)
+      - name: Build Ubuntu Server Creator (Server / amd64)
         run: |
           cd headless/bale
-          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../../ubuntu-server-creator .
-
-      - name: Build Ubuntu Server Joiner (Client)
-        run: |
-          cd headless/bale-joiner
-          GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../../ubuntu-server-joiner .
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../../creator-ubuntu-server .
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: release-binaries
           path: |
-            android-client-v8a
-            windows-client-32.exe
-            ubuntu-server-creator
-            ubuntu-server-joiner
+            joiner-android-v8a
+            joiner-windows-32bit.exe
+            creator-ubuntu-server
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
@@ -65,9 +59,8 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: |
-            android-client-v8a
-            windows-client-32.exe
-            ubuntu-server-creator
-            ubuntu-server-joiner
+            joiner-android-v8a
+            joiner-windows-32bit.exe
+            creator-ubuntu-server
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

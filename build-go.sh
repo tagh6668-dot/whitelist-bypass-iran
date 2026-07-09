@@ -23,8 +23,8 @@ mkdir -p ../android-app/app/libs
 cp mobile.aar ../android-app/app/libs/mobile.aar
 
 echo "Cross-compiling relay binary for Android..."
-GOOS=linux GOARCH=arm64 go build -o ../android-app/app/src/main/jniLibs/arm64-v8a/librelay.so .
-GOOS=linux GOARCH=arm   go build -o ../android-app/app/src/main/jniLibs/armeabi-v7a/librelay.so .
+GOOS=linux GOARCH=arm64 go build -ldflags="-checklinkname=0" -o ../android-app/app/src/main/jniLibs/arm64-v8a/librelay.so .
+GOOS=linux GOARCH=arm   go build -ldflags="-checklinkname=0" -o ../android-app/app/src/main/jniLibs/armeabi-v7a/librelay.so .
 echo "Relay binary built for arm64-v8a and armeabi-v7a"
 
 echo ""
