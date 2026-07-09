@@ -317,7 +317,7 @@ func (s *Session) readVP8Track(track *webrtc.TrackRemote) {
 		if pkt.Unmarshal(buf[:n]) != nil {
 			continue
 		}
-		if haveLastSeq && pkt.SequenceNumber != lastSeq+1 {
+		if haveLastSeq && pkt.SequenceNumber != uint16(lastSeq+1) {
 			frameValid = false
 			frameBuf = frameBuf[:0]
 		}
