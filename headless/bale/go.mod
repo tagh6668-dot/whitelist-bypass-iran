@@ -1,6 +1,6 @@
 module headless-bale-creator
 
-go 1.26.0
+go 1.25.0
 
 require whitelist-bypass-iran/relay v0.0.0
 

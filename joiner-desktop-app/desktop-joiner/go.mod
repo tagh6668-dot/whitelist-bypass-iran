@@ -1,6 +1,6 @@
 module desktop-joiner
 
-go 1.26.1
+go 1.25.0
 
 require (
 	github.com/pion/webrtc/v4 v4.2.9
