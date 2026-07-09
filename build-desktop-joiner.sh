@@ -30,9 +30,17 @@ build_windows() {
             curl -L -o "$JOINER_GO_DIR/wintun.zip" "$WINTUN_URL"
         fi
         echo "[wintun] extracting $WINTUN_ARCH"
-        unzip -o -j "$JOINER_GO_DIR/wintun.zip" "wintun/bin/$WINTUN_ARCH/wintun.dll" \
-            -d "$JOINER_GO_DIR" >/dev/null
-        mv "$JOINER_GO_DIR/wintun.dll" "$JOINER_GO_DIR/wintun-$OUT_TAG.dll"
+        if command -v unzip >/dev/null; then
+            unzip -o -j "$JOINER_GO_DIR/wintun.zip" "wintun/bin/$WINTUN_ARCH/wintun.dll" \
+                -d "$JOINER_GO_DIR" >/dev/null
+            mv "$JOINER_GO_DIR/wintun.dll" "$JOINER_GO_DIR/wintun-$OUT_TAG.dll"
+        else
+            PYTHON_CMD="python3"
+            if ! command -v python3 >/dev/null; then
+                PYTHON_CMD="python"
+            fi
+            $PYTHON_CMD -c "import zipfile, shutil; z = zipfile.ZipFile('$JOINER_GO_DIR/wintun.zip'); src = z.open('wintun/bin/$WINTUN_ARCH/wintun.dll'); dest = open('$JOINER_GO_DIR/wintun-$OUT_TAG.dll', 'wb'); shutil.copyfileobj(src, dest); src.close(); dest.close()"
+        fi
     fi
     ls -lh "$JOINER_GO_DIR/wintun-$OUT_TAG.dll"
 }

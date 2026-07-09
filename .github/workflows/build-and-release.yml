@@ -10,7 +10,8 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  build-ubuntu-and-android:
+    name: Build Android and Ubuntu binaries
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
@@ -21,11 +22,6 @@ jobs:
         with:
           go-version: '1.23'
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -34,11 +30,6 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-
-      - name: Install macOS/Windows tools (cross-compile helpers)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y mingw-w64 nsis
 
       - name: Configure Gradle Cache
         uses: gradle/actions/setup-gradle@v4
@@ -64,46 +55,103 @@ jobs:
           mkdir -p ../prebuilts
           cp app/build/outputs/apk/release/app-release.apk ../prebuilts/whitelist-bypass-v8a.apk
 
-      - name: Build Windows Joiner (32-bit/ia32)
-        env:
-          RELEASE_PLATFORM: win
-        run: |
-          # Build desktop-joiner binary
-          ./build-desktop-joiner.sh
-          
-          # Build Electron joiner installer for Windows ia32
-          cd joiner-desktop-app
-          npm install
-          npx tsc
-          # Build specifically for windows ia32
-          cp desktop-joiner/desktop-joiner-windows-ia32.exe desktop-joiner/desktop-joiner-bundle.exe
-          cp desktop-joiner/wintun-ia32.dll desktop-joiner/wintun-bundle.dll
-          npx electron-builder --win --ia32 --publish never
-          
-          # Copy to prebuilts
-          mkdir -p ../prebuilts
-          # The installer name usually matches WhitelistBypass Setup <version>-ia32.exe
-          find dist/ -name "*.exe" -not -name "builder-effective-config.yaml" -exec cp {} ../prebuilts/ \;
-
       - name: Build Ubuntu Headless Creator
         run: |
           # Build headless bale creator for Linux x64 (which is Ubuntu)
           cd headless/bale
           GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ../../prebuilts/headless-bale-creator-ubuntu-x64 .
 
-      - name: List Prebuilts
+      - name: Upload Linux & Android Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-android-artifacts
+          path: prebuilts/
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows 32-bit Joiner
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build Windows Joiner (32-bit/ia32)
+        env:
+          RELEASE_PLATFORM: win
         run: |
+          # Build Go desktop-joiner binary
+          chmod +x build-desktop-joiner.sh
+          ./build-desktop-joiner.sh
+          
+          # Build Electron joiner installer for Windows ia32
+          cd joiner-desktop-app
+          npm install
+          npx tsc
+          
+          # Build specifically for windows ia32
+          cp desktop-joiner/desktop-joiner-windows-ia32.exe desktop-joiner/desktop-joiner-bundle.exe
+          cp desktop-joiner/wintun-ia32.dll desktop-joiner/wintun-bundle.dll
+          
+          npx electron-builder --win --ia32 --publish never
+
+      - name: Copy Windows Artifact to Prebuilts
+        run: |
+          mkdir -p prebuilts
+          # If output was written to dist/ instead of prebuilts due to builder configuration
+          if [ -d joiner-desktop-app/dist ]; then
+            find joiner-desktop-app/dist/ -name "*.exe" -not -name "builder-effective-config.yaml" -exec cp {} prebuilts/ \;
+          fi
+          echo "Prebuilts content:"
           ls -la prebuilts/
 
-      - name: Create Release and Upload Artifacts
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: |
-            prebuilts/*.apk
-            prebuilts/*.exe
-            prebuilts/headless-bale-creator-ubuntu-x64
+          name: windows-artifacts
+          path: prebuilts/
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: [build-ubuntu-and-android, build-windows]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts directory
+        run: |
+          mkdir -p release-files
+          find artifacts/ -type f -exec cp {} release-files/ \;
+          echo "Files to release:"
+          ls -lh release-files/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && 'manual-build' || github.ref_name }}
+          name: ${{ github.event_name == 'workflow_dispatch' && 'Manual Build' || github.ref_name }}
           draft: false
           prerelease: false
+          files: release-files/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
