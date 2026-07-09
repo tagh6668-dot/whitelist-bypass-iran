@@ -15,7 +15,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "bypass.whitelist.iran"
+        applicationId = "bypass.whitelist.iran.joiner"
         minSdk = 23
         targetSdk = 36
         versionCode = 1_000_000 * versionMajor + 1_000 * versionMinor + versionPatch + versionBuild

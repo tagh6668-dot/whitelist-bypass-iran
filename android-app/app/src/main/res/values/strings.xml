@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">WhitelistBypass</string>
+    <string name="app_name">WhitelistBypass Joiner</string>
     <string name="status_idle">Idle</string>
     <string name="status_format">%1$s | %2$s</string>
     <string name="btn_go">GO</string>
