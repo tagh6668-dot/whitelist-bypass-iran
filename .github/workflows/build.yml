@@ -48,9 +48,10 @@ jobs:
           mkdir -p ../android-app/app/src/main/jniLibs/arm64-v8a
           mkdir -p ../android-app/app/src/main/jniLibs/armeabi-v7a
 
-          # Add gomobile tool dependencies to current module
+          # Add gomobile tool dependencies to current module and tidy sum file
           go get -tool golang.org/x/mobile/cmd/gobind
           go get golang.org/x/mobile
+          go mod tidy
 
           # Set NDK home dynamically from pre-installed SDK ndk folder
           export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$(ls $ANDROID_HOME/ndk | head -n 1)
