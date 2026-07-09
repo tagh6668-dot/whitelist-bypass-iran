@@ -2,6 +2,7 @@ package tunnel
 
 import "encoding/binary"
 
+// SOCKS Frame Message Type Definitions
 const (
 	MsgConnect    byte = 0x01
 	MsgConnectOK  byte = 0x02
@@ -50,6 +51,9 @@ func DecodeVP8Config(payload []byte) (fps, batch int, ok bool) {
 	return fps, batch, true
 }
 
+// EncodeFrame implements Optimization 4 (Varint Frame Header Compression).
+// It compresses connID and frame length using variable-length integers (Varint),
+// reducing header overhead from 9 bytes to 3-5 bytes.
 func EncodeFrame(connID uint32, msgType byte, payload []byte) []byte {
 	// Encode connID as Varint
 	var connBuf [5]byte
@@ -69,6 +73,7 @@ func EncodeFrame(connID uint32, msgType byte, payload []byte) []byte {
 	return buf
 }
 
+// DecodeFrames decodes concatenated frames compressed via Varint headers.
 func DecodeFrames(data []byte, cb func(connID uint32, msgType byte, payload []byte)) {
 	for {
 		if len(data) == 0 {

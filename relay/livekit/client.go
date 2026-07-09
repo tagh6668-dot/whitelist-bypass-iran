@@ -72,12 +72,12 @@ type Client struct {
 
 	closed atomic.Bool
 
-	OnReady              func()
-	OnTrack              func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
-	OnDataChannel        func(*webrtc.DataChannel)
-	OnPubConnected       func()
-	OnParticipantUpdate  func([]ParticipantInfo)
-	OnRemoteCandidate    func(target int, candidateInit string)
+	OnReady             func()
+	OnTrack             func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
+	OnDataChannel       func(*webrtc.DataChannel)
+	OnPubConnected      func()
+	OnParticipantUpdate func([]ParticipantInfo)
+	OnRemoteCandidate   func(target int, candidateInit string)
 }
 
 func NewClient(cfg Config) *Client {
@@ -97,7 +97,7 @@ func NewClient(cfg Config) *Client {
 	}
 }
 
-func (c *Client) Join() JoinResponse              { return c.join }
+func (c *Client) Join() JoinResponse            { return c.join }
 func (c *Client) PubPC() *webrtc.PeerConnection { return c.pubPC }
 func (c *Client) SubPC() *webrtc.PeerConnection { return c.subPC }
 

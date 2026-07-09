@@ -3,11 +3,11 @@ package common
 import "fmt"
 
 const (
-	StatusReady            = "READY"
-	StatusConnecting       = "CONNECTING"
-	StatusTunnelConnected  = "TUNNEL_CONNECTED"
-	StatusTunnelLost       = "TUNNEL_LOST"
-	StatusError            = "ERROR"
+	StatusReady           = "READY"
+	StatusConnecting      = "CONNECTING"
+	StatusTunnelConnected = "TUNNEL_CONNECTED"
+	StatusTunnelLost      = "TUNNEL_LOST"
+	StatusError           = "ERROR"
 )
 
 func EmitStatus(status string) {
