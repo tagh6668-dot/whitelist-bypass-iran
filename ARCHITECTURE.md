@@ -92,3 +92,74 @@ Compilation is managed through predefined shell scripts situated in the root fol
 *   `build-desktop-joiner.sh`: Bundles the Electron desktop client.
 *   `build-headless.sh`: Builds the non-GUI CLI client binary.
 *   `make-release.sh`: Bundles and packages compiled assets for release distribution.
+
+---
+
+## 5. Encryption Modes & Configuration
+
+The tunnel obfuscator (`relay/tunnel/obfuscator.go`) supports two encryption modes:
+
+| Mode | Algorithm | Overhead | Authentication | Default |
+|---|---|---|---|---|
+| **XOR (ChaCha20)** | ChaCha20 unauthenticated stream cipher | Minimal (4-byte sequence counter only) | None (relies on VP8 framing + epoch for integrity) | ✅ Yes |
+| **AEAD** | XChaCha20-Poly1305 | 24-byte nonce + 16-byte auth tag per frame | Full authenticated encryption | No |
+
+### Environment Variables
+
+| Variable | Values | Description |
+|---|---|---|
+| `USE_AEAD` | `true` / unset | Set to `true` to force AEAD mode instead of XOR. Both creator and joiner **must** use the same mode. |
+| `DEBUG_TUNNEL` | any non-empty value | Enable verbose tunnel debug logging (frame hex dumps, obfuscator encode/decode traces). |
+
+> **⚠️ Critical**: Both sides of the tunnel (creator and joiner) **must** use the same encryption mode. A mismatch will cause silent data corruption — frames will be received but decrypted as garbage, and no error will be logged unless `DEBUG_TUNNEL` is enabled.
+
+### Key Derivation
+
+The encryption key is derived from the Bale meeting join link:
+1. The join code is extracted from the URL path (e.g., `rbro-yljy2-z7di` from `https://meet.bale.ai/i/rbro-yljy2-z7di`)
+2. `SHA-256(join_code)` produces the 32-byte key used for both XOR and AEAD modes
+3. Both sides must use the same join link to derive matching keys
+
+---
+
+## 6. Troubleshooting
+
+### Tunnel connects but no traffic flows
+
+**Symptoms**: SOCKS5 connections are accepted (`SOCKS CONNECT N -> IP:port`) but never complete (`SOCKS CONNECTED` never appears). Only keepalive VP8 frames (24 bytes) are received.
+
+**Diagnostic checklist**:
+
+1. **Creator not running**: The most common cause. Verify the creator process is running and has joined the same Bale meeting room. Check creator logs for `TUNNEL CONNECTED`.
+
+2. **Cipher mode mismatch**: If one side uses XOR and the other uses AEAD, frames decrypt to garbage. Enable `DEBUG_TUNNEL=1` on both sides and check:
+   - `obf: enc-xor` vs `obf: dec-aead` (or vice versa) indicates a mismatch
+   - Both sides should show `useXorCipher=true` (or both `false`)
+
+3. **Key mismatch**: Both sides must derive the key from the same join link. If the creator generated a new meeting link after the joiner connected, the keys will differ.
+
+4. **SFU not relaying video track**: Check that the creator's VP8 track is being published and the joiner's subscriber PeerConnection receives a remote video track (`sub remote track: video/VP8` in the logs).
+
+### Received frames are all keepalives
+
+If `[lk-video] recv vp8 frame #N 24 bytes` entries appear but no larger frames are seen, the remote peer is sending only keepalives (no data). This means the creator has the tunnel open but is not receiving any SOCKS traffic to relay back, or it is not running at all and only the SFU's echo/relay of the joiner's own keepalives is being received (which would be filtered out by the `SelfEcho` check in the obfuscator).
+
+---
+
+## 7. Known Issues & Fixes
+
+### Fix: Inverted cipher toggle logic (July 2026)
+
+**Bug**: The original environment variable `DISABLE_AEAD` used inverted logic:
+```go
+// OLD (buggy):
+useXorCipher := os.Getenv("DISABLE_AEAD") != "false"
+```
+This was always `true` when the variable was unset (correct default), but semantically confusing. Setting `DISABLE_AEAD=false` would activate AEAD, which is the **opposite** of what the variable name suggests. This could cause cipher mismatches between creator and joiner if configured inconsistently.
+
+**Fix**: Replaced with a clearer `USE_AEAD` variable:
+```go
+// NEW (fixed):
+useXorCipher := os.Getenv("USE_AEAD") != "true"
+```
+Now XOR is always the default. Set `USE_AEAD=true` on **both** sides to switch to authenticated encryption.

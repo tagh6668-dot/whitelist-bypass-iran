@@ -109,8 +109,12 @@ func NewTunnelObfuscator(secret []byte) (*TunnelObfuscator, error) {
 		epoch = 1
 	}
 
-	// ALWAYS use XOR cipher by default for minimal overhead (Optimization 2)
-	useXorCipher := os.Getenv("DISABLE_AEAD") != "false"
+	// ALWAYS use XOR cipher by default for minimal overhead (Optimization 2).
+	// AEAD mode can be forced by setting USE_AEAD=true.
+	// The old check `DISABLE_AEAD != "false"` was inverted/confusing and could
+	// cause a cipher mismatch between creator and joiner when the env var was
+	// set inconsistently on both sides.
+	useXorCipher := os.Getenv("USE_AEAD") != "true"
 
 	o := &TunnelObfuscator{
 		aead:         aead,
