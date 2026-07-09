@@ -100,3 +100,38 @@ func TestObfuscatorLightweight(t *testing.T) {
 		t.Errorf("decrypted payload mismatch, expected %s, got %s", payload, res.Payload)
 	}
 }
+
+// BenchmarkEncodeFrame benchmarks the Varint-compressed frame encoder.
+func BenchmarkEncodeFrame(b *testing.B) {
+	connID := uint32(105)
+	msgType := MsgData
+	payload := []byte("highly-optimized-obfuscated-payload-bytes")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = EncodeFrame(connID, msgType, payload)
+	}
+}
+
+// BenchmarkDecodeFrames benchmarks decoding of compressed Varint frames.
+func BenchmarkDecodeFrames(b *testing.B) {
+	payload := []byte("highly-optimized-obfuscated-payload-bytes")
+	frame := EncodeFrame(105, MsgData, payload)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		DecodeFrames(frame, func(cid uint32, mt byte, p []byte) {})
+	}
+}
+
+// BenchmarkObfuscatorLightweight measures the performance of the XOR-only ChaCha20 cipher.
+func BenchmarkObfuscatorLightweight(b *testing.B) {
+	secret := []byte("test-secret-pacing-link-key")
+	o, _ := NewTunnelObfuscator(secret)
+	payload := []byte("packet-payload-of-average-size-for-socks5")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = o.EncodeData(payload)
+	}
+}
