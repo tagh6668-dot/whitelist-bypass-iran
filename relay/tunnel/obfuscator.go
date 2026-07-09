@@ -171,10 +171,12 @@ func (o *TunnelObfuscator) EncodeData(payload []byte) []byte {
 			return nil
 		}
 
-		out := make([]byte, len(hdr)+len(payload))
-		copy(out, hdr)
+		// Prepend sequence number to ciphertext to make it robust against lossy channels
+		out := make([]byte, len(hdr)+4+len(payload))
+		copy(out[:len(hdr)], hdr)
+		binary.BigEndian.PutUint32(out[len(hdr):len(hdr)+4], uint32(seq))
 
-		ciphertext := out[len(hdr):]
+		ciphertext := out[len(hdr)+4:]
 		c.XORKeyStream(ciphertext, payload)
 
 		if debugTunnel {
@@ -305,16 +307,22 @@ func (o *TunnelObfuscator) Decode(frame []byte) DecodeResult {
 
 	body := frame[hdrLen:]
 	if o.useXorCipher {
-		seq := o.recvCounter.Add(1)
+		if len(body) < 4 {
+			return DecodeResult{}
+		}
+		seq := binary.BigEndian.Uint32(body[:4])
+		o.recvCounter.Store(uint64(seq))
+
 		var nonce [12]byte
-		binary.BigEndian.PutUint64(nonce[4:12], seq)
+		binary.BigEndian.PutUint64(nonce[4:12], uint64(seq))
 
 		c, err := chacha20.NewUnauthenticatedCipher(o.keyHash[:], nonce[:])
 		if err != nil {
 			return DecodeResult{}
 		}
-		plaintext := make([]byte, len(body))
-		c.XORKeyStream(plaintext, body)
+		ciphertext := body[4:]
+		plaintext := make([]byte, len(ciphertext))
+		c.XORKeyStream(plaintext, ciphertext)
 		res.Payload = plaintext
 
 		if debugTunnel {
