@@ -141,7 +141,10 @@ jobs:
       - name: Flatten artifacts directory
         run: |
           mkdir -p release-files
-          find artifacts/ -type f -exec cp {} release-files/ \;
+          # Only copy the three specific requested files, ignoring internal unpacked folders
+          cp artifacts/ubuntu-android-artifacts/whitelist-bypass-v8a.apk release-files/ || true
+          cp artifacts/ubuntu-android-artifacts/headless-bale-creator-ubuntu-x64 release-files/ || true
+          find artifacts/windows-artifacts/ -maxdepth 1 -name "*ia32.exe" -exec cp {} release-files/ \;
           echo "Files to release:"
           ls -lh release-files/
 
