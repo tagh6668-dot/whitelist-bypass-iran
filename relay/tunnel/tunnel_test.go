@@ -2,7 +2,11 @@ package tunnel
 
 import (
 	"bytes"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/pion/webrtc/v4"
 )
 
 func TestVarintProtocol(t *testing.T) {
@@ -98,6 +102,92 @@ func TestObfuscatorLightweight(t *testing.T) {
 	}
 	if !bytes.Equal(res.Payload, payload) {
 		t.Errorf("decrypted payload mismatch, expected %s, got %s", payload, res.Payload)
+	}
+}
+
+type mockDataTunnel struct {
+	sentData [][]byte
+	mu       sync.Mutex
+	onData   func([]byte)
+	onClose  func()
+}
+
+func (m *mockDataTunnel) SendData(data []byte) {
+	m.mu.Lock()
+	m.sentData = append(m.sentData, append([]byte(nil), data...))
+	m.mu.Unlock()
+}
+func (m *mockDataTunnel) SetOnData(fn func([]byte))   { m.onData = fn }
+func (m *mockDataTunnel) SetOnClose(fn func())        { m.onClose = fn }
+func (m *mockDataTunnel) Reconfigure(fps, batch int) {}
+
+func TestRelayBridgeBatching(t *testing.T) {
+	mockTunnel := &mockDataTunnel{}
+	rb := NewRelayBridge(mockTunnel, "joiner", 4096, func(s string, a ...any) {})
+	defer rb.Close()
+
+	// Send three small frames
+	rb.send(1, MsgData, []byte("part1"))
+	rb.send(1, MsgData, []byte("part2"))
+	rb.send(1, MsgData, []byte("part3"))
+
+	// Wait longer than flushInterval (4ms)
+	time.Sleep(20 * time.Millisecond)
+
+	mockTunnel.mu.Lock()
+	defer mockTunnel.mu.Unlock()
+
+	if len(mockTunnel.sentData) == 0 {
+		t.Fatalf("expected data to be sent, but got none")
+	}
+
+	// The coalesced data should contain all 3 frames parsed seamlessly by DecodeFrames
+	var decoded []string
+	for _, chunk := range mockTunnel.sentData {
+		DecodeFrames(chunk, func(cid uint32, mt byte, p []byte) {
+			decoded = append(decoded, string(p))
+		})
+	}
+
+	if len(decoded) != 3 {
+		t.Errorf("expected 3 decoded frames, got %d: %v", len(decoded), decoded)
+	} else {
+		if decoded[0] != "part1" || decoded[1] != "part2" || decoded[2] != "part3" {
+			t.Errorf("coalesced payload mismatch, got: %v", decoded)
+		}
+	}
+}
+
+func TestVP8DataTunnelAdaptivePacing(t *testing.T) {
+	codec := webrtc.RTPCodecCapability{MimeType: webrtc.MimeTypeVP8}
+	track, err := webrtc.NewTrackLocalStaticSample(codec, "video", "pion")
+	if err != nil {
+		t.Fatalf("failed to create static track: %v", err)
+	}
+
+	obf, err := NewTunnelObfuscator([]byte("pacing-secret-key"))
+	if err != nil {
+		t.Fatalf("failed to create obfuscator: %v", err)
+	}
+
+	vt := NewVP8DataTunnel(track, obf, func(s string, a ...any) {})
+	vt.Start(24, 30)
+	defer vt.Stop()
+
+	// Initially, it should not be idle
+	if vt.isIdle.Load() {
+		t.Errorf("expected VP8 tunnel to start in active state, but got idle")
+	}
+
+	// Force transition to idle state for testing
+	vt.isIdle.Store(true)
+
+	// SendData should immediately scale back up to active (non-idle)
+	vt.SendData([]byte("active-burst-payload"))
+
+	// Check if we are active now
+	if vt.isIdle.Load() {
+		t.Errorf("expected VP8 tunnel to transition back to active state immediately on SendData")
 	}
 }
 
