@@ -34,7 +34,7 @@ type VP8DataTunnel struct {
 	sentFrames atomic.Uint64
 	recvFrames atomic.Uint64
 
-	// Dynamic FPS and adaptive pacing fields
+	// Dynamic FPS and adaptive pacing fields (Optimization 3)
 	isIdle      atomic.Bool
 	scaleUpChan chan struct{}
 
@@ -103,7 +103,7 @@ func (t *VP8DataTunnel) SendData(data []byte) {
 	}
 	select {
 	case t.sendQueue <- data:
-		// If we are currently in idle state, scale up immediately
+		// If we are currently in idle state, scale up immediately (Optimization 3)
 		if t.isIdle.Swap(false) {
 			select {
 			case t.scaleUpChan <- struct{}{}:

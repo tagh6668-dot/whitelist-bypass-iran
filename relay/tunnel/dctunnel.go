@@ -101,6 +101,7 @@ func (t *DCTunnel) SendData(data []byte) {
 }
 
 func (t *DCTunnel) writerLoop() {
+	// Keepalive interval set to 10 seconds (Optimization 3)
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 

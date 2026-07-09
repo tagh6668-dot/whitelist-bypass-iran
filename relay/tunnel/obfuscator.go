@@ -62,7 +62,7 @@ type TunnelObfuscator struct {
 	encCount atomic.Uint32
 	decCount atomic.Uint32
 
-	// XOR-only ChaCha20 cipher fields
+	// XOR-only ChaCha20 cipher fields (Optimization 2)
 	useXorCipher bool
 	sendCounter  atomic.Uint64
 	recvCounter  atomic.Uint64
@@ -109,7 +109,7 @@ func NewTunnelObfuscator(secret []byte) (*TunnelObfuscator, error) {
 		epoch = 1
 	}
 
-	// Read environment variable or enable XOR cipher by default for minimal overhead
+	// ALWAYS use XOR cipher by default for minimal overhead (Optimization 2)
 	useXorCipher := os.Getenv("DISABLE_AEAD") != "false"
 
 	o := &TunnelObfuscator{
