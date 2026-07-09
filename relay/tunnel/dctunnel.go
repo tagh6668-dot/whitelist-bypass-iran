@@ -1,7 +1,6 @@
 package tunnel
 
 import (
-	"encoding/binary"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -75,29 +74,23 @@ func (t *DCTunnel) OnData() func([]byte) {
 func (t *DCTunnel) SetOnClose(fn func())     { t.onClose = fn }
 func (t *DCTunnel) Reconfigure(_ int, _ int) {}
 
+// SendData implements Optimization 1 by sending the raw consolidated (batched) payload
+// directly over the WebRTC DataChannel without individual frame disassembly.
 func (t *DCTunnel) SendData(data []byte) {
-	DecodeFrames(data, func(connID uint32, msgType byte, payload []byte) {
-		// Encode connID as Varint
-		var connBuf [5]byte
-		connLen := binary.PutUvarint(connBuf[:], uint64(connID))
-
-		buf := make([]byte, connLen+1+len(payload))
-		copy(buf[0:], connBuf[:connLen])
-		buf[connLen] = msgType
-		copy(buf[connLen+1:], payload)
-
-		wire := buf
-		if t.obf != nil {
-			wire = t.obf.EncryptPayload(buf)
-			if wire == nil {
-				return
-			}
+	if len(data) == 0 {
+		return
+	}
+	wire := data
+	if t.obf != nil {
+		wire = t.obf.EncryptPayload(data)
+		if wire == nil {
+			return
 		}
-		select {
-		case t.sendCh <- wire:
-		case <-t.stopCh:
-		}
-	})
+	}
+	select {
+	case t.sendCh <- wire:
+	case <-t.stopCh:
+	}
 }
 
 func (t *DCTunnel) writerLoop() {
@@ -182,26 +175,15 @@ func (t *DCTunnel) deliver(wire []byte) {
 		}
 	})
 
-	// Decode connID (Varint) and msgType from payload to reconstruct standard framed payload
-	connID, n := binary.Uvarint(payload)
-	if n <= 0 || n+1 > len(payload) {
-		t.logFn("dctunnel: invalid frame header")
-		return
-	}
-	msgType := payload[n]
-	actualPayload := payload[n+1:]
-
-	frame := EncodeFrame(uint32(connID), msgType, actualPayload)
-
 	t.onMu.Lock()
 	cb := t.onData
 	if cb == nil {
-		t.pending = append(t.pending, frame)
+		t.pending = append(t.pending, payload)
 		t.onMu.Unlock()
 		return
 	}
 	t.onMu.Unlock()
-	cb(frame)
+	cb(payload)
 }
 
 func (t *DCTunnel) Close() {
