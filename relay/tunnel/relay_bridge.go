@@ -316,6 +316,7 @@ func (rb *RelayBridge) connectTCP(connID uint32, addr string) {
 		rb.send(connID, MsgConnectErr, []byte(common.MaskError(err)))
 		return
 	}
+	defer conn.Close()
 	rb.conns.Store(connID, conn)
 	rb.send(connID, MsgConnectOK, nil)
 	rb.logFn("relay: CONNECTED %d -> %s", connID, common.MaskAddr(addr))
@@ -437,6 +438,7 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 	rb.logFn("relay: SOCKS CONNECTED %d -> %s", id, common.MaskAddr(host))
 
 	go func() {
+		defer conn.Close()
 		readBuf := make([]byte, rb.readBuf)
 		for {
 			rn, rerr := conn.Read(readBuf)
