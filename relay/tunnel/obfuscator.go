@@ -222,8 +222,10 @@ func (o *TunnelObfuscator) EncryptPayload(plaintext []byte) []byte {
 		if err != nil {
 			return nil
 		}
-		out := make([]byte, len(plaintext))
-		c.XORKeyStream(out, plaintext)
+		// Prepend 4-byte sequence number to make it robust against lossy channels and desynchronization
+		out := make([]byte, 4+len(plaintext))
+		binary.BigEndian.PutUint32(out[:4], uint32(seq))
+		c.XORKeyStream(out[4:], plaintext)
 		return out
 	} else {
 		nonce := make([]byte, o.aead.NonceSize())
@@ -241,16 +243,22 @@ func (o *TunnelObfuscator) DecryptPayload(data []byte) ([]byte, bool) {
 		return data, true
 	}
 	if o.useXorCipher {
-		seq := o.recvCounter.Add(1)
+		if len(data) < 4 {
+			return nil, false
+		}
+		seq := binary.BigEndian.Uint32(data[:4])
+		o.recvCounter.Store(uint64(seq))
+
 		var nonce [12]byte
-		binary.BigEndian.PutUint64(nonce[4:12], seq)
+		binary.BigEndian.PutUint64(nonce[4:12], uint64(seq))
 
 		c, err := chacha20.NewUnauthenticatedCipher(o.keyHash[:], nonce[:])
 		if err != nil {
 			return nil, false
 		}
-		out := make([]byte, len(data))
-		c.XORKeyStream(out, data)
+		ciphertext := data[4:]
+		out := make([]byte, len(ciphertext))
+		c.XORKeyStream(out, ciphertext)
 		return out, true
 	} else {
 		nonceSize := o.aead.NonceSize()

@@ -106,6 +106,55 @@ func TestObfuscatorLightweight(t *testing.T) {
 	}
 }
 
+func TestObfuscatorPayloadXOR(t *testing.T) {
+	secret := []byte("payload-xor-test-key")
+	sender, err := NewTunnelObfuscator(secret)
+	if err != nil {
+		t.Fatalf("failed to create sender: %v", err)
+	}
+	receiver, err := NewTunnelObfuscator(secret)
+	if err != nil {
+		t.Fatalf("failed to create receiver: %v", err)
+	}
+
+	// 1. Test normal encrypt/decrypt
+	payload := []byte("some application data")
+	encrypted := sender.EncryptPayload(payload)
+	decrypted, ok := receiver.DecryptPayload(encrypted)
+	if !ok {
+		t.Fatalf("decryption failed")
+	}
+	if !bytes.Equal(decrypted, payload) {
+		t.Errorf("expected %s, got %s", payload, decrypted)
+	}
+
+	// 2. Test keepalive/empty payload
+	keepaliveEnc := sender.EncryptPayload(nil)
+	if len(keepaliveEnc) != 4 {
+		t.Errorf("expected keepalive length of 4 (the sequence number), got %d", len(keepaliveEnc))
+	}
+	keepaliveDec, ok := receiver.DecryptPayload(keepaliveEnc)
+	if !ok {
+		t.Fatalf("decryption of keepalive failed")
+	}
+	if len(keepaliveDec) != 0 {
+		t.Errorf("expected decrypted keepalive length 0, got %d", len(keepaliveDec))
+	}
+
+	// 3. Test robustness against skipped packet (packet loss emulation)
+	_ = sender.EncryptPayload([]byte("skipped packet")) // sequence 3, skipped/lost
+	packet4 := sender.EncryptPayload([]byte("packet 4")) // sequence 4
+
+	// Receiver gets packet4. Because it contains the sequence number, receiver should decrypt it fine!
+	decrypted4, ok := receiver.DecryptPayload(packet4)
+	if !ok {
+		t.Fatalf("decryption of out-of-order packet failed")
+	}
+	if !bytes.Equal(decrypted4, []byte("packet 4")) {
+		t.Errorf("expected 'packet 4', got %s", decrypted4)
+	}
+}
+
 type mockDataTunnel struct {
 	sentData [][]byte
 	mu       sync.Mutex
