@@ -217,6 +217,26 @@ func TestVarintEdgeCases(t *testing.T) {
 	})
 }
 
+func TestObfuscatorKeyDerivation(t *testing.T) {
+	testCases := []struct {
+		link     string
+		expected string
+	}{
+		{"https://meet.bale.ai/i/rbro-yljy2-z7di", "rbro-yljy2-z7di"},
+		{"rbro-yljy2-z7di", "rbro-yljy2-z7di"},
+		{"https://meet.bale.ai/i/rbro-yljy2-z7di?someparam=value", "rbro-yljy2-z7di"},
+		{"https://meet.bale.ai/i/rbro-yljy2-z7di#somehash", "rbro-yljy2-z7di"},
+		{"  https://meet.bale.ai/i/rbro-yljy2-z7di/ ", "rbro-yljy2-z7di"},
+	}
+
+	for _, tc := range testCases {
+		secret := DeriveSecretFromJoinLink(tc.link)
+		if string(secret) != tc.expected {
+			t.Errorf("expected token %q for link %q, got %q", tc.expected, tc.link, string(secret))
+		}
+	}
+}
+
 // BenchmarkEncodeFrame benchmarks the Varint-compressed frame encoder.
 func BenchmarkEncodeFrame(b *testing.B) {
 	connID := uint32(105)
