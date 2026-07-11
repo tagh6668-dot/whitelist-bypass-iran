@@ -192,6 +192,10 @@ func (t *VP8DataTunnel) writerLoop() {
 					sample = t.obf.EncodeData(data)
 					idleTicks = 0
 					lastUserDataTime = time.Now()
+					if isCurrentlyIdle {
+						t.isIdle.Store(false)
+						reconfigure = true
+					}
 				default:
 					// If not in idle state, check if we should switch to idle state (no user data for > 1.5 seconds)
 					if !isCurrentlyIdle && time.Since(lastUserDataTime) > 1500*time.Millisecond {
