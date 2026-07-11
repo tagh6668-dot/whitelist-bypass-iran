@@ -1,6 +1,6 @@
 module headless-bale-creator
 
-go 1.25.0
+go 1.24.0
 
 require whitelist-bypass-iran/relay v0.0.0
 
@@ -24,9 +24,9 @@ require (
 	github.com/pion/turn/v4 v4.1.4 // indirect
 	github.com/pion/webrtc/v4 v4.2.9 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
-	golang.org/x/crypto v0.49.0 // indirect
-	golang.org/x/net v0.52.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/crypto v0.48.0 // indirect
+	golang.org/x/net v0.50.0 // indirect
+	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/time v0.11.0 // indirect
 )
 
