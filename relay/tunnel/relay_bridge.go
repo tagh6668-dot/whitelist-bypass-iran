@@ -163,6 +163,7 @@ func (rb *RelayBridge) Close() {
 	if rb.batchChan != nil {
 		close(rb.batchChan)
 	}
+	rb.MarkReady()
 }
 
 func (rb *RelayBridge) Stats() (tcpConns, udpConns int, nextID uint32) {
