@@ -123,6 +123,10 @@ func (rb *RelayBridge) closeAll() {
 			v.Close()
 		case *socksConn:
 			v.conn.Close()
+			select {
+			case v.rdy <- fmt.Errorf("bridge closed"):
+			default:
+			}
 		}
 		rb.conns.Delete(key)
 		return true
