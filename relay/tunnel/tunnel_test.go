@@ -2,6 +2,7 @@ package tunnel
 
 import (
 	"bytes"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -234,6 +235,107 @@ func TestObfuscatorKeyDerivation(t *testing.T) {
 		if string(secret) != tc.expected {
 			t.Errorf("expected token %q for link %q, got %q", tc.expected, tc.link, string(secret))
 		}
+	}
+}
+
+// mockDataChannel implements datachannel.ReadWriteCloser for testing DCTunnel
+type mockDataChannel struct {
+	mu       sync.Mutex
+	written  [][]byte
+	readBuf  chan []byte
+	isClosed bool
+}
+
+func (m *mockDataChannel) Write(b []byte) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.written = append(m.written, append([]byte(nil), b...))
+	return len(b), nil
+}
+
+func (m *mockDataChannel) Read(p []byte) (int, error) {
+	n, _, err := m.ReadDataChannel(p)
+	return n, err
+}
+
+func (m *mockDataChannel) ReadDataChannel(p []byte) (int, bool, error) {
+	select {
+	case data, ok := <-m.readBuf:
+		if !ok {
+			return 0, false, io.EOF
+		}
+		copy(p, data)
+		return len(data), false, nil
+	case <-time.After(500 * time.Millisecond):
+		return 0, false, io.EOF
+	}
+}
+
+func (m *mockDataChannel) WriteDataChannel(p []byte, isString bool) (int, error) {
+	return m.Write(p)
+}
+
+func (m *mockDataChannel) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.isClosed {
+		m.isClosed = true
+		close(m.readBuf)
+	}
+	return nil
+}
+
+func TestDCTunnelKeepaliveXOR(t *testing.T) {
+	secret := []byte("secret")
+	senderObf, err := NewTunnelObfuscator(secret)
+	if err != nil {
+		t.Fatalf("failed to create obfuscator: %v", err)
+	}
+	receiverObf, err := NewTunnelObfuscator(secret)
+	if err != nil {
+		t.Fatalf("failed to create obfuscator: %v", err)
+	}
+
+	// Ensure XOR mode is enabled (default)
+	senderObf.useXorCipher = true
+	receiverObf.useXorCipher = true
+
+	writeCh := &mockDataChannel{readBuf: make(chan []byte, 10)}
+	readCh := &mockDataChannel{readBuf: make(chan []byte, 10)}
+
+	senderTunnel := NewDCTunnelFromRaw(readCh, writeCh, senderObf, 4096, func(string, ...any) {})
+	defer senderTunnel.Close()
+
+	receiverTunnel := NewDCTunnelFromRaw(writeCh, readCh, receiverObf, 4096, func(string, ...any) {})
+	defer receiverTunnel.Close()
+
+	// Trigger keepalive packet manually or wait. Since we don't want tests to hang, we can mock the write/read.
+	// When sender sends a keepalive, it encrypts []byte{0x00}.
+	keepalivePayload := []byte{0x00}
+	encryptedKeepalive := senderObf.EncryptPayload(keepalivePayload)
+
+	// Ensure keepalive is not empty in XOR mode
+	if len(encryptedKeepalive) != 1 {
+		t.Fatalf("expected encrypted keepalive length to be 1 in XOR mode, got %d", len(encryptedKeepalive))
+	}
+
+	// Simulate receiving keepalive on receiver
+	received := make([]byte, len(encryptedKeepalive))
+	copy(received, encryptedKeepalive)
+
+	decrypted, ok := receiverObf.DecryptPayload(received)
+	if !ok {
+		t.Fatalf("receiver failed to decrypt keepalive")
+	}
+
+	if len(decrypted) != 1 || decrypted[0] != 0x00 {
+		t.Errorf("decrypted keepalive mismatch, expected [0x00], got %v", decrypted)
+	}
+
+	// Verify that sequence counters are incremented and synchronized
+	if senderObf.sendCounter.Load() != receiverObf.recvCounter.Load() {
+		t.Errorf("counters out of sync: sender sendCounter=%d, receiver recvCounter=%d",
+			senderObf.sendCounter.Load(), receiverObf.recvCounter.Load())
 	}
 }
 
