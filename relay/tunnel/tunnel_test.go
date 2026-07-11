@@ -110,6 +110,8 @@ type mockDataTunnel struct {
 	mu       sync.Mutex
 	onData   func([]byte)
 	onClose  func()
+	fps      int
+	batch    int
 }
 
 func (m *mockDataTunnel) SendData(data []byte) {
@@ -119,7 +121,12 @@ func (m *mockDataTunnel) SendData(data []byte) {
 }
 func (m *mockDataTunnel) SetOnData(fn func([]byte))   { m.onData = fn }
 func (m *mockDataTunnel) SetOnClose(fn func())        { m.onClose = fn }
-func (m *mockDataTunnel) Reconfigure(fps, batch int) {}
+func (m *mockDataTunnel) Reconfigure(fps, batch int) {
+	m.mu.Lock()
+	m.fps = fps
+	m.batch = batch
+	m.mu.Unlock()
+}
 
 func TestRelayBridgeBatching(t *testing.T) {
 	mockTunnel := &mockDataTunnel{}
@@ -189,6 +196,25 @@ func TestVP8DataTunnelAdaptivePacing(t *testing.T) {
 	if vt.isIdle.Load() {
 		t.Errorf("expected VP8 tunnel to transition back to active state immediately on SendData")
 	}
+}
+
+func TestVarintEdgeCases(t *testing.T) {
+	// Test empty / nil data
+	DecodeFrames(nil, func(cid uint32, mt byte, p []byte) {
+		t.Errorf("did not expect callback on nil data")
+	})
+
+	// Test incomplete header data
+	incomplete := []byte{0x80} // Invalid/incomplete uvarint
+	DecodeFrames(incomplete, func(cid uint32, mt byte, p []byte) {
+		t.Errorf("did not expect callback on incomplete header")
+	})
+
+	// Test incomplete payload length
+	incompletePayload := []byte{10, 1} // Frame len is 10, but only 1 byte follows
+	DecodeFrames(incompletePayload, func(cid uint32, mt byte, p []byte) {
+		t.Errorf("did not expect callback on incomplete payload")
+	})
 }
 
 // BenchmarkEncodeFrame benchmarks the Varint-compressed frame encoder.
