@@ -78,7 +78,7 @@ func NewRelayBridge(tunnel DataTunnel, mode string, readBuf int, logFn func(stri
 func (rb *RelayBridge) batchWorker() {
 	const maxBatchSize = 1250
 	const flushInterval = 4 * time.Millisecond
-	buf := make([]byte, 0, maxBatchSize + 256)
+	buf := make([]byte, 0, maxBatchSize+256)
 
 	ticker := time.NewTicker(flushInterval)
 	defer ticker.Stop()

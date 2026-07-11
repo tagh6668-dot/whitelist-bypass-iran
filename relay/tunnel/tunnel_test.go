@@ -119,8 +119,8 @@ func (m *mockDataTunnel) SendData(data []byte) {
 	m.sentData = append(m.sentData, append([]byte(nil), data...))
 	m.mu.Unlock()
 }
-func (m *mockDataTunnel) SetOnData(fn func([]byte))   { m.onData = fn }
-func (m *mockDataTunnel) SetOnClose(fn func())        { m.onClose = fn }
+func (m *mockDataTunnel) SetOnData(fn func([]byte)) { m.onData = fn }
+func (m *mockDataTunnel) SetOnClose(fn func())      { m.onClose = fn }
 func (m *mockDataTunnel) Reconfigure(fps, batch int) {
 	m.mu.Lock()
 	m.fps = fps
