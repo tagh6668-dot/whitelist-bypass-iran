@@ -363,9 +363,9 @@ func TestDCTunnelKeepaliveXOR(t *testing.T) {
 	keepalivePayload := []byte{0x00}
 	encryptedKeepalive := senderObf.EncryptPayload(keepalivePayload)
 
-	// Ensure keepalive is not empty in XOR mode
-	if len(encryptedKeepalive) != 1 {
-		t.Fatalf("expected encrypted keepalive length to be 1 in XOR mode, got %d", len(encryptedKeepalive))
+	// Ensure keepalive is not empty in XOR mode (it prepends a 4-byte sequence number, total length is 5)
+	if len(encryptedKeepalive) != 5 {
+		t.Fatalf("expected encrypted keepalive length to be 5 in XOR mode, got %d", len(encryptedKeepalive))
 	}
 
 	// Simulate receiving keepalive on receiver
