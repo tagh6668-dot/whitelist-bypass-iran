@@ -212,20 +212,19 @@ func (t *VP8DataTunnel) writerLoop() {
 					sample = t.obf.EncodeKeepalive()
 				}
 
-				if reconfigure {
-					break
+				if sample != nil {
+					if err := t.track.WriteSample(media.Sample{Data: sample, Duration: sampleInterval}); err != nil {
+						t.logFn("vp8tunnel: WriteSample error: %v", err)
+					} else {
+						n := t.sentFrames.Add(1)
+						if n <= 5 || n%500 == 0 {
+							t.logFn("vp8tunnel: sent frame #%d size=%d", n, len(sample))
+						}
+					}
 				}
 
-				if sample == nil {
-					continue
-				}
-				if err := t.track.WriteSample(media.Sample{Data: sample, Duration: sampleInterval}); err != nil {
-					t.logFn("vp8tunnel: WriteSample error: %v", err)
-					continue
-				}
-				n := t.sentFrames.Add(1)
-				if n <= 5 || n%500 == 0 {
-					t.logFn("vp8tunnel: sent frame #%d size=%d", n, len(sample))
+				if reconfigure {
+					break
 				}
 			}
 		}
