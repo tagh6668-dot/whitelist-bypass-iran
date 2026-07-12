@@ -123,6 +123,8 @@ func (t *DCTunnel) writerLoop() {
 				// Send a 1-byte keepalive [0x00] in XOR mode to avoid 0-byte packet skip,
 				// or let EncryptPayload encrypt a single byte keepalive payload.
 				keepalive = t.obf.EncryptPayload([]byte{0x00})
+			} else {
+				keepalive = []byte{0x00}
 			}
 			if _, err := t.writeRaw.Write(keepalive); err != nil {
 				t.logFn("dctunnel: write error sending keepalive: %v", err)
