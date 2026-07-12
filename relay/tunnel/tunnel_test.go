@@ -142,7 +142,7 @@ func TestObfuscatorPayloadXOR(t *testing.T) {
 	}
 
 	// 3. Test robustness against skipped packet (packet loss emulation)
-	_ = sender.EncryptPayload([]byte("skipped packet")) // sequence 3, skipped/lost
+	_ = sender.EncryptPayload([]byte("skipped packet"))  // sequence 3, skipped/lost
 	packet4 := sender.EncryptPayload([]byte("packet 4")) // sequence 4
 
 	// Receiver gets packet4. Because it contains the sequence number, receiver should decrypt it fine!
