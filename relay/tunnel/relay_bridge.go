@@ -128,6 +128,9 @@ func (rb *RelayBridge) closeAll() {
 			default:
 			}
 		}
+		return true
+	})
+	rb.conns.Range(func(key, value any) bool {
 		rb.conns.Delete(key)
 		return true
 	})
@@ -189,7 +192,9 @@ func (rb *RelayBridge) send(connID uint32, msgType byte, payload []byte) {
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			rb.tunnel.SendData(frame)
+			if !rb.closed.Load() {
+				rb.tunnel.SendData(frame)
+			}
 		}
 	}()
 	rb.batchChan <- frame
@@ -244,9 +249,15 @@ func (rb *RelayBridge) handleJoinerMessage(connID uint32, msgType byte, payload 
 	sc := val.(*socksConn)
 	switch msgType {
 	case MsgConnectOK:
-		sc.rdy <- nil
+		select {
+		case sc.rdy <- nil:
+		default:
+		}
 	case MsgConnectErr:
-		sc.rdy <- fmt.Errorf("%s", payload)
+		select {
+		case sc.rdy <- fmt.Errorf("%s", payload):
+		default:
+		}
 	case MsgData:
 		sc.conn.Write(payload)
 	case MsgClose:
