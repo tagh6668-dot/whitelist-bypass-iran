@@ -345,8 +345,9 @@ func (rb *RelayBridge) connectTCP(connID uint32, addr string) {
 			break
 		}
 	}
-	rb.send(connID, MsgClose, nil)
-	rb.conns.Delete(connID)
+	if _, exists := rb.conns.LoadAndDelete(connID); exists {
+		rb.send(connID, MsgClose, nil)
+	}
 }
 
 type socksConn struct {
@@ -457,8 +458,9 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 				rb.send(id, MsgData, readBuf[:rn])
 			}
 			if rerr != nil {
-				rb.send(id, MsgClose, nil)
-				rb.conns.Delete(id)
+				if _, exists := rb.conns.LoadAndDelete(id); exists {
+					rb.send(id, MsgClose, nil)
+				}
 				return
 			}
 		}
