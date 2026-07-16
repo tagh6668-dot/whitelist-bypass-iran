@@ -201,15 +201,14 @@ func (t *VP8DataTunnel) writerLoop() {
 					if !isCurrentlyIdle && time.Since(lastUserDataTime) > 1500*time.Millisecond {
 						t.isIdle.Store(true)
 						reconfigure = true
-						break
+					} else {
+						idleTicks++
+						if idleTicks < keepaliveEvery {
+							continue
+						}
+						idleTicks = 0
+						sample = t.obf.EncodeKeepalive()
 					}
-
-					idleTicks++
-					if idleTicks < keepaliveEvery {
-						continue
-					}
-					idleTicks = 0
-					sample = t.obf.EncodeKeepalive()
 				}
 
 				if sample != nil {
@@ -221,10 +220,6 @@ func (t *VP8DataTunnel) writerLoop() {
 							t.logFn("vp8tunnel: sent frame #%d size=%d", n, len(sample))
 						}
 					}
-				}
-
-				if reconfigure {
-					break
 				}
 			}
 		}
