@@ -519,7 +519,9 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 			payload[0] = byte(len(dstAddr))
 			copy(payload[1:], dstAddr)
 			copy(payload[1+len(dstAddr):], buf[headerLen:n])
-			rb.udpClients.Store(id, &udpClient{udpConn: udpConn, clientAddr: addr, socksHdr: buf[:headerLen]})
+			socksHdrCopy := make([]byte, headerLen)
+			copy(socksHdrCopy, buf[:headerLen])
+			rb.udpClients.Store(id, &udpClient{udpConn: udpConn, clientAddr: addr, socksHdr: socksHdrCopy})
 			rb.send(id, MsgUDP, payload)
 		}
 	}()
