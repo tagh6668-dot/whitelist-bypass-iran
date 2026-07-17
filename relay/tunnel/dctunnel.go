@@ -169,6 +169,12 @@ func (t *DCTunnel) deliver(wire []byte) {
 			return
 		}
 		payload = pt
+	} else {
+		// To prevent race conditions / data corruption when payload is processed asynchronously,
+		// we must copy the wire slice since it points to the shared read loop buffer.
+		cp := make([]byte, len(wire))
+		copy(cp, wire)
+		payload = cp
 	}
 	if len(payload) == 0 || (len(payload) == 1 && payload[0] == 0x00) {
 		return
