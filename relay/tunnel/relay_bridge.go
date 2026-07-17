@@ -61,6 +61,9 @@ func NewRelayBridgeWithAuth(tunnel DataTunnel, mode string, readBuf int, logFn f
 }
 
 func NewRelayBridge(tunnel DataTunnel, mode string, readBuf int, logFn func(string, ...any)) *RelayBridge {
+	if readBuf <= 0 {
+		readBuf = 32768
+	}
 	rb := &RelayBridge{
 		tunnel:    tunnel,
 		logFn:     logFn,
