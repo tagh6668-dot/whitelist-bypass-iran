@@ -167,7 +167,7 @@ func (o *TunnelObfuscator) EncodeData(payload []byte) []byte {
 	if o.useXorCipher {
 		seq := o.sendCounter.Add(1)
 		var nonce [12]byte
-		binary.BigEndian.PutUint64(nonce[4:12], seq) // Implicit counter nonce
+		binary.BigEndian.PutUint64(nonce[4:12], uint64(uint32(seq))) // Implicit counter nonce (aligned to 32-bit transmitted seq)
 
 		// Create 32-byte key from keyHash and set 12-byte nonce
 		c, err := chacha20.NewUnauthenticatedCipher(o.keyHash[:], nonce[:])
@@ -216,7 +216,7 @@ func (o *TunnelObfuscator) EncryptPayload(plaintext []byte) []byte {
 	if o.useXorCipher {
 		seq := o.sendCounter.Add(1)
 		var nonce [12]byte
-		binary.BigEndian.PutUint64(nonce[4:12], seq)
+		binary.BigEndian.PutUint64(nonce[4:12], uint64(uint32(seq))) // Implicit counter nonce (aligned to 32-bit transmitted seq)
 
 		c, err := chacha20.NewUnauthenticatedCipher(o.keyHash[:], nonce[:])
 		if err != nil {
