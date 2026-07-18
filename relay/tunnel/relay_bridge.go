@@ -79,7 +79,7 @@ func NewRelayBridge(tunnel DataTunnel, mode string, readBuf int, logFn func(stri
 }
 
 func (rb *RelayBridge) batchWorker() {
-	const maxBatchSize = 1250
+	const maxBatchSize = 1000
 	const flushInterval = 4 * time.Millisecond
 	buf := make([]byte, 0, maxBatchSize+256)
 
