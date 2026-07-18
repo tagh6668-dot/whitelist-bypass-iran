@@ -56,6 +56,7 @@ jobs:
 
       - name: Build Go Library and Android Assets
         run: |
+          go -C relay get -tool golang.org/x/mobile/cmd/gobind
           ./build-go.sh
 
       - name: Build Android App (Release APK)
