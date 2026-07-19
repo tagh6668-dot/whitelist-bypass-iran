@@ -48,6 +48,7 @@ func main() {
 	vp8FPS := flag.Int("vp8-fps", 24, "VP8 frame rate")
 	vp8Batch := flag.Int("vp8-batch", 30, "VP8 batch multiplier")
 	tunnelMode := flag.String("tunnel-mode", "vp8", "tunnel mode: vp8 or dc")
+	routingConfig := flag.String("routing-config", "", "path to routing rules config JSON file (optional)")
 	flag.Parse()
 
 	if *joinLink == "" {
@@ -62,6 +63,11 @@ func main() {
 			readBuf = common.DCSocksReadBuf
 		}
 		bridge := tunnel.NewRelayBridgeWithAuth(tun, "joiner", readBuf, log.Printf, *socksUser, *socksPass)
+		if *routingConfig != "" {
+			if err := bridge.LoadRoutingConfig(*routingConfig); err != nil {
+				log.Printf("router: failed to load config from %s: %v", *routingConfig, err)
+			}
+		}
 		bridge.MarkReady()
 		addr := fmt.Sprintf("127.0.0.1:%d", *socksPort)
 		go func() {

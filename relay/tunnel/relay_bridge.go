@@ -32,19 +32,22 @@ type udpClient struct {
 }
 
 type RelayBridge struct {
-	tunnel     DataTunnel
-	conns      sync.Map
-	udpClients sync.Map
-	flowToID   sync.Map
-	udpConns   sync.Map
-	nextID     atomic.Uint32
-	logFn      func(string, ...any)
-	mode       string
-	readBuf    int
-	ready      chan struct{}
-	once       sync.Once
-	socksUser  string
-	socksPass  string
+	tunnel         DataTunnel
+	conns          sync.Map
+	udpClients     sync.Map
+	flowToID       sync.Map
+	udpConns       sync.Map
+	directUDPConns sync.Map
+	nextID         atomic.Uint32
+	logFn          func(string, ...any)
+	mode           string
+	readBuf        int
+	ready          chan struct{}
+	once           sync.Once
+	socksUser      string
+	socksPass      string
+
+	router *common.Router
 
 	sendCount atomic.Uint32
 	recvCount atomic.Uint32
@@ -75,6 +78,7 @@ func NewRelayBridge(tunnel DataTunnel, mode string, readBuf int, logFn func(stri
 		readBuf:   readBuf,
 		ready:     make(chan struct{}),
 		batchChan: make(chan []byte, 4096),
+		router:    common.NewRouter(logFn),
 	}
 	tunnel.SetOnData(rb.handleTunnelData)
 	tunnel.SetOnClose(rb.closeAll)
@@ -83,6 +87,10 @@ func NewRelayBridge(tunnel DataTunnel, mode string, readBuf int, logFn func(stri
 		go rb.udpCleanupWorker()
 	}
 	return rb
+}
+
+func (rb *RelayBridge) LoadRoutingConfig(path string) error {
+	return rb.router.LoadConfig(path)
 }
 
 func (rb *RelayBridge) udpCleanupWorker() {
@@ -500,7 +508,41 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 		return
 	}
 
+	route := rb.router.Route(host)
 	id := rb.nextID.Add(1)
+
+	if route == "block" {
+		rb.logFn("relay: SOCKS BLOCK %d -> %s", id, common.MaskAddr(host))
+		conn.Write(common.ConnFail)
+		conn.Close()
+		return
+	}
+
+	if route == "direct" {
+		rb.logFn("relay: SOCKS DIRECT %d -> %s", id, common.MaskAddr(host))
+		localConn, err := net.DialTimeout("tcp", host, 10e9)
+		if err != nil {
+			rb.logFn("relay: SOCKS DIRECT %d failed: %s", id, common.MaskError(err))
+			conn.Write(common.ConnFail)
+			conn.Close()
+			return
+		}
+		conn.Write(common.OK)
+		rb.logFn("relay: SOCKS DIRECT CONNECTED %d -> %s", id, common.MaskAddr(host))
+
+		go func() {
+			defer conn.Close()
+			defer localConn.Close()
+			io.Copy(localConn, conn)
+		}()
+		go func() {
+			defer conn.Close()
+			defer localConn.Close()
+			io.Copy(conn, localConn)
+		}()
+		return
+	}
+
 	sc := &socksConn{id: id, conn: conn, rb: rb, rdy: make(chan error, 1)}
 	rb.conns.Store(id, sc)
 	rb.logFn("relay: SOCKS CONNECT %d -> %s", id, common.MaskAddr(host))
@@ -579,6 +621,15 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 				continue
 			}
 
+			route := rb.router.Route(dstAddr)
+			if route == "block" {
+				continue
+			}
+			if route == "direct" {
+				rb.handleDirectUDP(addr, dstAddr, buf[:headerLen], buf[headerLen:n], udpConn)
+				continue
+			}
+
 			flowKey := fmt.Sprintf("%s->%s", addr.String(), dstAddr)
 
 			var id uint32
@@ -612,4 +663,49 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 			rb.send(id, MsgUDP, payload)
 		}
 	}()
+}
+
+func (rb *RelayBridge) handleDirectUDP(clientAddr *net.UDPAddr, dstAddr string, socksHdr []byte, data []byte, udpConn *net.UDPConn) {
+	flowKey := fmt.Sprintf("direct:%s->%s", clientAddr.String(), dstAddr)
+
+	var conn *net.UDPConn
+	if val, ok := rb.directUDPConns.Load(flowKey); ok {
+		conn = val.(*net.UDPConn)
+	} else {
+		resolvedAddr, err := net.ResolveUDPAddr("udp", dstAddr)
+		if err != nil {
+			return
+		}
+		c, err := net.DialUDP("udp", nil, resolvedAddr)
+		if err != nil {
+			return
+		}
+		conn = c
+		rb.directUDPConns.Store(flowKey, conn)
+
+		hdrCopy := make([]byte, len(socksHdr))
+		copy(hdrCopy, socksHdr)
+
+		go func() {
+			defer func() {
+				conn.Close()
+				rb.directUDPConns.Delete(flowKey)
+			}()
+			buf := make([]byte, common.UDPBufSize)
+			for {
+				conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+				n, err := conn.Read(buf)
+				if err != nil {
+					return
+				}
+				reply := make([]byte, len(hdrCopy)+n)
+				copy(reply, hdrCopy)
+				copy(reply[len(hdrCopy):], buf[:n])
+				udpConn.WriteToUDP(reply, clientAddr)
+			}
+		}()
+	}
+
+	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	conn.Write(data)
 }
