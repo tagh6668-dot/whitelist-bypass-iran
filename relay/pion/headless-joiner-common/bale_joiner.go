@@ -108,71 +108,6 @@ func (j *BaleHeadlessJoiner) RunWithParams(jsonParams string) {
 	}
 	j.logFn("[config] share-code=%s", code)
 
-	dialCtx := j.makeDialContext()
-	httpClient := &http.Client{Timeout: 60 * time.Second, Transport: &http.Transport{DialContext: dialCtx}}
-	cfg, err := baleFetchAnonConfig(httpClient, j.logFn)
-	if err != nil {
-		j.logFn("[config] %v", err)
-		j.Status.EmitStatusError("config: " + err.Error())
-		return
-	}
-
-	bridge := bale.NewBridge(bale.BridgeConfig{
-		LogFn:       j.logFn,
-		DialContext: dialCtx,
-		RPCTimeout:  15 * time.Second,
-	})
-	wsURL := cfg.WSURL + "?token=" + url.QueryEscape(cfg.Token)
-	header := http.Header{}
-	header.Set("User-Agent", common.UserAgent)
-	header.Set("Origin", baleOrigin)
-	if err := bridge.Dial(wsURL, header); err != nil {
-		j.logFn("[bale-ws] %v", err)
-		j.Status.EmitStatusError("ws: " + err.Error())
-		return
-	}
-	defer bridge.Close()
-
-	go bridge.Run()
-
-	resp, err := bridge.Unary("bale.meet.v1.Meet", "GetCallLinkDetails", bale.EncodeGetCallLinkDetailsRequest(code))
-	if err != nil {
-		j.logFn("[auth] GetCallLinkDetails: %v", err)
-		j.Status.EmitStatusError("auth: " + err.Error())
-		return
-	}
-	details, err := bale.DecodeCallEnvelope(resp.Response)
-	if err != nil {
-		j.logFn("[auth] decode call: %v", err)
-		j.Status.EmitStatusError("auth decode")
-		return
-	}
-	if details.ID == 0 {
-		j.logFn("[auth] GetCallLinkDetails returned no callId")
-		j.Status.EmitStatusError("no callId")
-		return
-	}
-	j.logFn("[auth] resolved code=%s -> callId=%d", code, details.ID)
-
-	resp, err = bridge.Unary("bale.meet.v1.Meet", "JoinGroupCall", bale.EncodeJoinGroupCallRequest(details.ID, params.DisplayName))
-	if err != nil {
-		j.logFn("[auth] JoinGroupCall: %v", err)
-		j.Status.EmitStatusError("join: " + err.Error())
-		return
-	}
-	joined, err := bale.DecodeCallEnvelope(resp.Response)
-	if err != nil {
-		j.logFn("[auth] decode join: %v", err)
-		j.Status.EmitStatusError("join decode")
-		return
-	}
-	if joined.URL == "" || joined.LivekitJWT == "" {
-		j.logFn("[auth] JoinGroupCall returned empty livekit creds")
-		j.Status.EmitStatusError("empty creds")
-		return
-	}
-	j.logFn("[auth] livekit url=%s jwt=%dB room=%s", joined.URL, len(joined.LivekitJWT), joined.Token)
-
 	obf, err := tunnel.NewTunnelObfuscator(tunnel.DeriveSecretFromJoinLink(params.JoinLink))
 	if err != nil {
 		j.logFn("[obf] init failed: %v", err)
@@ -188,48 +123,155 @@ func (j *BaleHeadlessJoiner) RunWithParams(jsonParams string) {
 		settingEngine = &se
 	}
 
-	sess := bale.NewSession(bale.SessionConfig{
-		Role:           bale.RoleJoiner,
-		TunnelMode:     params.TunnelMode,
-		WSURL:          joined.URL,
-		RoomToken:      joined.LivekitJWT,
-		Origin:         baleOrigin,
-		Obfuscator:     obf,
-		LogFn:          j.logFn,
-		VP8FPS:         params.VP8FPS,
-		VP8Batch:       params.VP8Batch,
-		SettingEngine:  settingEngine,
-		NetDialContext: dialCtx,
-		ResolveICEHost: j.ResolveFn,
-	})
-	sess.OnConnected = func(tun tunnel.DataTunnel) {
-		j.logFn("bale-joiner: === TUNNEL CONNECTED ===")
-		j.Status.EmitStatus(common.StatusTunnelConnected)
-		if j.OnConnected != nil {
-			j.OnConnected(tun)
+	reconnectingTun := NewReconnectingTunnel()
+	var onceConnected sync.Once
+
+	for {
+		j.mu.Lock()
+		closed := j.closed
+		j.mu.Unlock()
+		if closed {
+			return
 		}
-	}
-	if j.OnRemoteCandidate != nil {
-		sess.OnRemoteCandidate = j.OnRemoteCandidate
-	}
 
-	j.mu.Lock()
-	j.session = sess
-	closed := j.closed
-	j.mu.Unlock()
-	if closed {
+		j.Status.EmitStatus(common.StatusConnecting)
+		j.logFn("bale-joiner: starting connection attempt...")
+
+		dialCtx := j.makeDialContext()
+		httpClient := &http.Client{Timeout: 60 * time.Second, Transport: &http.Transport{DialContext: dialCtx}}
+		cfg, err := baleFetchAnonConfig(httpClient, j.logFn)
+		if err != nil {
+			j.logFn("[config] %v", err)
+			j.Status.EmitStatusError("config: " + err.Error())
+			time.Sleep(3 * time.Second)
+			continue
+		}
+
+		bridge := bale.NewBridge(bale.BridgeConfig{
+			LogFn:       j.logFn,
+			DialContext: dialCtx,
+			RPCTimeout:  15 * time.Second,
+		})
+		wsURL := cfg.WSURL + "?token=" + url.QueryEscape(cfg.Token)
+		header := http.Header{}
+		header.Set("User-Agent", common.UserAgent)
+		header.Set("Origin", baleOrigin)
+		if err := bridge.Dial(wsURL, header); err != nil {
+			j.logFn("[bale-ws] %v", err)
+			j.Status.EmitStatusError("ws: " + err.Error())
+			time.Sleep(3 * time.Second)
+			continue
+		}
+
+		go bridge.Run()
+
+		resp, err := bridge.Unary("bale.meet.v1.Meet", "GetCallLinkDetails", bale.EncodeGetCallLinkDetailsRequest(code))
+		if err != nil {
+			j.logFn("[auth] GetCallLinkDetails: %v", err)
+			j.Status.EmitStatusError("auth: " + err.Error())
+			bridge.Close()
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		details, err := bale.DecodeCallEnvelope(resp.Response)
+		if err != nil {
+			j.logFn("[auth] decode call: %v", err)
+			j.Status.EmitStatusError("auth decode")
+			bridge.Close()
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		if details.ID == 0 {
+			j.logFn("[auth] GetCallLinkDetails returned no callId")
+			j.Status.EmitStatusError("no callId")
+			bridge.Close()
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		j.logFn("[auth] resolved code=%s -> callId=%d", code, details.ID)
+
+		resp, err = bridge.Unary("bale.meet.v1.Meet", "JoinGroupCall", bale.EncodeJoinGroupCallRequest(details.ID, params.DisplayName))
+		if err != nil {
+			j.logFn("[auth] JoinGroupCall: %v", err)
+			j.Status.EmitStatusError("join: " + err.Error())
+			bridge.Close()
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		joined, err := bale.DecodeCallEnvelope(resp.Response)
+		if err != nil {
+			j.logFn("[auth] decode join: %v", err)
+			j.Status.EmitStatusError("join decode")
+			bridge.Close()
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		if joined.URL == "" || joined.LivekitJWT == "" {
+			j.logFn("[auth] JoinGroupCall returned empty livekit creds")
+			j.Status.EmitStatusError("empty creds")
+			bridge.Close()
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		j.logFn("[auth] livekit url=%s jwt=%dB room=%s", joined.URL, len(joined.LivekitJWT), joined.Token)
+
+		sess := bale.NewSession(bale.SessionConfig{
+			Role:           bale.RoleJoiner,
+			TunnelMode:     params.TunnelMode,
+			WSURL:          joined.URL,
+			RoomToken:      joined.LivekitJWT,
+			Origin:         baleOrigin,
+			Obfuscator:     obf,
+			LogFn:          j.logFn,
+			VP8FPS:         params.VP8FPS,
+			VP8Batch:       params.VP8Batch,
+			SettingEngine:  settingEngine,
+			NetDialContext: dialCtx,
+			ResolveICEHost: j.ResolveFn,
+		})
+
+		sess.OnConnected = func(tun tunnel.DataTunnel) {
+			j.logFn("bale-joiner: === TUNNEL CONNECTED ===")
+			j.Status.EmitStatus(common.StatusTunnelConnected)
+			reconnectingTun.UpdateTunnel(tun)
+			onceConnected.Do(func() {
+				if j.OnConnected != nil {
+					j.OnConnected(reconnectingTun)
+				}
+			})
+		}
+		if j.OnRemoteCandidate != nil {
+			sess.OnRemoteCandidate = j.OnRemoteCandidate
+		}
+
+		j.mu.Lock()
+		j.session = sess
+		closed = j.closed
+		j.mu.Unlock()
+		if closed {
+			bridge.Close()
+			sess.Close()
+			return
+		}
+
+		if err := sess.Start(); err != nil {
+			j.logFn("[session] start: %v", err)
+			j.Status.EmitStatusError("session: " + err.Error())
+			bridge.Close()
+			time.Sleep(3 * time.Second)
+			continue
+		}
+
+		<-sess.Done()
+		j.logFn("bale-joiner: session ended, initiating auto-reconnect...")
+		j.Status.EmitStatus(common.StatusTunnelLost)
+
+		bridge.Close()
 		sess.Close()
-		return
-	}
 
-	if err := sess.Start(); err != nil {
-		j.logFn("[session] start: %v", err)
-		j.Status.EmitStatusError("session: " + err.Error())
-		return
+		reconnectingTun.UpdateTunnel(nil)
+		time.Sleep(2 * time.Second)
 	}
-	<-sess.Done()
-	j.logFn("bale-joiner: session ended")
-	j.Status.EmitStatus(common.StatusTunnelLost)
 }
 
 func (j *BaleHeadlessJoiner) Close() {
@@ -260,5 +302,68 @@ func (j *BaleHeadlessJoiner) makeDialContext() func(ctx context.Context, network
 			return nil, err
 		}
 		return (&net.Dialer{Timeout: 10 * time.Second}).DialContext(ctx, network, resolvedIP+":"+port)
+	}
+}
+
+type ReconnectingTunnel struct {
+	mu        sync.Mutex
+	active    tunnel.DataTunnel
+	onData    func([]byte)
+	onClose   func()
+	fps       int
+	batch     int
+}
+
+func NewReconnectingTunnel() *ReconnectingTunnel {
+	return &ReconnectingTunnel{}
+}
+
+func (rt *ReconnectingTunnel) UpdateTunnel(newTun tunnel.DataTunnel) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	rt.active = newTun
+	if newTun != nil {
+		if rt.onData != nil {
+			newTun.SetOnData(rt.onData)
+		}
+		if rt.fps > 0 || rt.batch > 0 {
+			newTun.Reconfigure(rt.fps, rt.batch)
+		}
+	}
+}
+
+func (rt *ReconnectingTunnel) SendData(data []byte) {
+	rt.mu.Lock()
+	active := rt.active
+	rt.mu.Unlock()
+	if active != nil {
+		active.SendData(data)
+	}
+}
+
+func (rt *ReconnectingTunnel) SetOnData(fn func([]byte)) {
+	rt.mu.Lock()
+	rt.onData = fn
+	active := rt.active
+	rt.mu.Unlock()
+	if active != nil {
+		active.SetOnData(fn)
+	}
+}
+
+func (rt *ReconnectingTunnel) SetOnClose(fn func()) {
+	rt.mu.Lock()
+	rt.onClose = fn
+	rt.mu.Unlock()
+}
+
+func (rt *ReconnectingTunnel) Reconfigure(fps, batch int) {
+	rt.mu.Lock()
+	rt.fps = fps
+	rt.batch = batch
+	active := rt.active
+	rt.mu.Unlock()
+	if active != nil {
+		active.Reconfigure(fps, batch)
 	}
 }
