@@ -27,12 +27,16 @@ type udpClient struct {
 	udpConn    *net.UDPConn
 	clientAddr *net.UDPAddr
 	socksHdr   []byte
+	flowKey    string
+	lastActive atomic.Int64
 }
 
 type RelayBridge struct {
 	tunnel     DataTunnel
 	conns      sync.Map
 	udpClients sync.Map
+	flowToID   sync.Map
+	udpConns   sync.Map
 	nextID     atomic.Uint32
 	logFn      func(string, ...any)
 	mode       string
@@ -75,7 +79,33 @@ func NewRelayBridge(tunnel DataTunnel, mode string, readBuf int, logFn func(stri
 	tunnel.SetOnData(rb.handleTunnelData)
 	tunnel.SetOnClose(rb.closeAll)
 	go rb.batchWorker()
+	if mode == "joiner" {
+		go rb.udpCleanupWorker()
+	}
 	return rb
+}
+
+func (rb *RelayBridge) udpCleanupWorker() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		<-ticker.C
+		if rb.closed.Load() {
+			return
+		}
+		now := time.Now().Unix()
+		rb.udpClients.Range(func(key, value any) bool {
+			uc := value.(*udpClient)
+			if now-uc.lastActive.Load() > 60 {
+				connID := key.(uint32)
+				rb.udpClients.Delete(connID)
+				rb.flowToID.Delete(uc.flowKey)
+				rb.send(connID, MsgClose, nil) // Tell creator to close its UDP socket
+				rb.logFn("relay: swept inactive UDP flow %s (ID %d)", uc.flowKey, connID)
+			}
+			return true
+		})
+	}
 }
 
 func (rb *RelayBridge) batchWorker() {
@@ -144,6 +174,17 @@ func (rb *RelayBridge) closeAll() {
 		}
 		udpCount++
 		rb.udpClients.Delete(key)
+		return true
+	})
+	rb.flowToID.Range(func(key, value any) bool {
+		rb.flowToID.Delete(key)
+		return true
+	})
+	rb.udpConns.Range(func(key, value any) bool {
+		if c, ok := value.(*net.UDPConn); ok {
+			c.Close()
+		}
+		rb.udpConns.Delete(key)
 		return true
 	})
 	rb.logFn("relay: closeAll mode=%s tcp=%d udp=%d ids=%v nextID=%d", rb.mode, len(ids), udpCount, ids, rb.nextID.Load())
@@ -238,11 +279,11 @@ func (rb *RelayBridge) handleJoinerMessage(connID uint32, msgType byte, payload 
 			return
 		}
 		uc := uval.(*udpClient)
+		uc.lastActive.Store(time.Now().Unix())
 		reply := make([]byte, len(uc.socksHdr)+len(payload))
 		copy(reply, uc.socksHdr)
 		copy(reply[len(uc.socksHdr):], payload)
 		uc.udpConn.WriteToUDP(reply, uc.clientAddr)
-		rb.udpClients.Delete(connID)
 		return
 	}
 	val, ok := rb.conns.Load(connID)
@@ -287,6 +328,11 @@ func (rb *RelayBridge) handleCreatorMessage(connID uint32, msgType byte, payload
 				c.Close()
 			}
 		}
+		if val, ok := rb.udpConns.LoadAndDelete(connID); ok {
+			if c, ok := val.(*net.UDPConn); ok {
+				c.Close()
+			}
+		}
 	}
 }
 
@@ -303,23 +349,41 @@ func (rb *RelayBridge) handleUDP(connID uint32, payload []byte) {
 	}
 	addr := string(payload[1 : 1+addrLen])
 	data := payload[1+addrLen:]
-	udpAddr, err := net.ResolveUDPAddr("udp", addr)
-	if err != nil {
-		return
+
+	var conn *net.UDPConn
+	if val, ok := rb.udpConns.Load(connID); ok {
+		conn = val.(*net.UDPConn)
+	} else {
+		udpAddr, err := net.ResolveUDPAddr("udp", addr)
+		if err != nil {
+			return
+		}
+		c, err := net.DialUDP("udp", nil, udpAddr)
+		if err != nil {
+			return
+		}
+		conn = c
+		rb.udpConns.Store(connID, conn)
+
+		go func(id uint32, uconn *net.UDPConn) {
+			defer func() {
+				uconn.Close()
+				rb.udpConns.Delete(id)
+			}()
+			buf := make([]byte, common.UDPBufSize)
+			for {
+				uconn.SetReadDeadline(time.Now().Add(30 * time.Second))
+				n, err := uconn.Read(buf)
+				if err != nil {
+					return
+				}
+				rb.send(id, MsgUDPReply, buf[:n])
+			}
+		}(connID, conn)
 	}
-	conn, err := net.DialUDP("udp", nil, udpAddr)
-	if err != nil {
-		return
-	}
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(5 * time.Second))
+
+	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	conn.Write(data)
-	buf := make([]byte, common.UDPBufSize)
-	n, err := conn.Read(buf)
-	if err != nil {
-		return
-	}
-	rb.send(connID, MsgUDPReply, buf[:n])
 }
 
 func (rb *RelayBridge) connectTCP(connID uint32, addr string) {
@@ -514,14 +578,37 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 			if addrErr != nil {
 				continue
 			}
-			id := rb.nextID.Add(1)
+
+			flowKey := fmt.Sprintf("%s->%s", addr.String(), dstAddr)
+
+			var id uint32
+			if val, ok := rb.flowToID.Load(flowKey); ok {
+				id = val.(uint32)
+				if uval, ok := rb.udpClients.Load(id); ok {
+					uc := uval.(*udpClient)
+					uc.lastActive.Store(time.Now().Unix())
+				}
+			} else {
+				id = rb.nextID.Add(1)
+				rb.flowToID.Store(flowKey, id)
+
+				uc := &udpClient{
+					udpConn:    udpConn,
+					clientAddr: addr,
+					socksHdr:   make([]byte, headerLen),
+					flowKey:    flowKey,
+				}
+				copy(uc.socksHdr, buf[:headerLen])
+				uc.lastActive.Store(time.Now().Unix())
+
+				rb.udpClients.Store(id, uc)
+			}
+
 			payload := make([]byte, len(dstAddr)+1+n-headerLen)
 			payload[0] = byte(len(dstAddr))
 			copy(payload[1:], dstAddr)
 			copy(payload[1+len(dstAddr):], buf[headerLen:n])
-			socksHdrCopy := make([]byte, headerLen)
-			copy(socksHdrCopy, buf[:headerLen])
-			rb.udpClients.Store(id, &udpClient{udpConn: udpConn, clientAddr: addr, socksHdr: socksHdrCopy})
+
 			rb.send(id, MsgUDP, payload)
 		}
 	}()
