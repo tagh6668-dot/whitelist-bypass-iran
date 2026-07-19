@@ -53,6 +53,8 @@ object PrefsKeys {
     const val DNS_MODE = "dns_mode"
     const val DNS_PRIMARY = "dns_primary"
     const val DNS_SECONDARY = "dns_secondary"
+    const val ROUTING_ENABLED = "routing_enabled"
+    const val ROUTING_CONFIG_JSON = "routing_config_json"
 }
 
 object VP8Defaults {

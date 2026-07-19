@@ -1,5 +1,6 @@
 package bypass.whitelist.iran.tunnel
 
+import android.content.Context
 import android.util.Log
 import bypass.whitelist.iran.util.ParamCallback
 import bypass.whitelist.iran.util.Prefs
@@ -11,7 +12,7 @@ import java.net.Inet4Address
 import java.net.InetAddress
 
 class HeadlessRelayController(
-    private val nativeLibDir: String,
+    private val context: Context,
     private val relayMode: String = "bale-headless-joiner",
     private val onLog: ParamCallback<String>,
     private val onStatus: ParamCallback<VpnStatus>,
@@ -29,7 +30,7 @@ class HeadlessRelayController(
         stop()
         isRunning = true
 
-        val relayBin = File(nativeLibDir, "librelay.so")
+        val relayBin = File(context.applicationInfo.nativeLibraryDir, "librelay.so")
         if (!relayBin.exists()) {
             onLog("Relay binary not found")
             onStatus(VpnStatus.CALL_FAILED)
@@ -45,13 +46,27 @@ class HeadlessRelayController(
                 return@Thread
             }
             try {
-                val pb = ProcessBuilder(
+                val args = mutableListOf(
                     relayBin.absolutePath,
                     "--mode", relayMode,
                     "--socks-port", "$socksPort",
                     "--socks-user", SocksAuth.user,
-                    "--socks-pass", SocksAuth.pass,
+                    "--socks-pass", SocksAuth.pass
                 )
+
+                if (Prefs.routingEnabled) {
+                    val routingFile = File(context.filesDir, "routing.json")
+                    try {
+                        routingFile.writeText(Prefs.routingConfigJson)
+                        args.add("--routing-config")
+                        args.add(routingFile.absolutePath)
+                        onLog("Routing config loaded: ${routingFile.absolutePath}")
+                    } catch (e: Exception) {
+                        onLog("Failed to write routing config: ${e.message}")
+                    }
+                }
+
+                val pb = ProcessBuilder(args)
                 pb.redirectErrorStream(true)
                 val proc = pb.start()
                 synchronized(this) {

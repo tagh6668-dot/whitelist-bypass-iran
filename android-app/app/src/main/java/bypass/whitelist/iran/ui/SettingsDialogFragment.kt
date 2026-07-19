@@ -96,6 +96,11 @@ class SettingsDialogFragment : DialogFragment() {
             DnsSettingsDialogFragment().show(childFragmentManager, DnsSettingsDialogFragment.TAG)
         }
 
+        val routingItem = view.findViewById<TextView>(R.id.routingItem)
+        routingItem.setOnClickListener {
+            RoutingSettingsDialogFragment().show(childFragmentManager, RoutingSettingsDialogFragment.TAG)
+        }
+
         tunnelModeItem.setOnClickListener {
             showTunnelModeDialog(tunnelModeItem, vp8PacingItem)
         }

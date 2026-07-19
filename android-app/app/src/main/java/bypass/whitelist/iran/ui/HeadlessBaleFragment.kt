@@ -30,7 +30,7 @@ class HeadlessBaleFragment : Fragment() {
         val displayName = if (Prefs.useCustomName) Prefs.displayName else "Joiner"
 
         relay = HeadlessRelayController(
-            nativeLibDir = requireContext().applicationInfo.nativeLibraryDir,
+            context = requireContext(),
             relayMode = "bale-headless-joiner",
             onLog = { host?.appendLog(it) },
             onStatus = { status ->

@@ -113,4 +113,33 @@ var socksPort: Long
     var dnsSecondary: String
         get() = prefs.getString(PrefsKeys.DNS_SECONDARY, Vpn.DNS_SECONDARY)!!
         set(value) = prefs.edit { putString(PrefsKeys.DNS_SECONDARY, value) }
+
+    var routingEnabled: Boolean
+        get() = prefs.getBoolean(PrefsKeys.ROUTING_ENABLED, false)
+        set(value) = prefs.edit { putBoolean(PrefsKeys.ROUTING_ENABLED, value) }
+
+    var routingConfigJson: String
+        get() = prefs.getString(PrefsKeys.ROUTING_CONFIG_JSON, """{
+  "domainStrategy": "IPIfNonMatch",
+  "rules": [
+    {
+      "outboundTag": "direct",
+      "domain": [
+        "domain:ir",
+        "full:bale.ai"
+      ],
+      "ip": [
+        "geoip:private",
+        "geoip:ir"
+      ]
+    },
+    {
+      "outboundTag": "block",
+      "domain": [
+        "geosite:category-ads-all"
+      ]
+    }
+  ]
+}""")!!
+        set(value) = prefs.edit { putString(PrefsKeys.ROUTING_CONFIG_JSON, value) }
 }
