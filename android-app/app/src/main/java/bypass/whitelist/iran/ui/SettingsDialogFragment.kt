@@ -97,8 +97,11 @@ class SettingsDialogFragment : DialogFragment() {
         }
 
         val routingItem = view.findViewById<TextView>(R.id.routingItem)
+        updateRoutingLabel(routingItem)
         routingItem.setOnClickListener {
-            RoutingSettingsDialogFragment().show(childFragmentManager, RoutingSettingsDialogFragment.TAG)
+            RoutingSettingsDialogFragment {
+                updateRoutingLabel(routingItem)
+            }.show(childFragmentManager, RoutingSettingsDialogFragment.TAG)
         }
 
         tunnelModeItem.setOnClickListener {
@@ -143,6 +146,21 @@ class SettingsDialogFragment : DialogFragment() {
 
     private fun updateTunnelModeLabel(textView: TextView) {
         textView.text = getString(R.string.menu_tunnel_mode, Prefs.tunnelMode.label)
+    }
+
+    private fun updateRoutingLabel(textView: TextView) {
+        val modeStr = if (!Prefs.routingEnabled) {
+            "Disabled"
+        } else {
+            when (Prefs.routingMode) {
+                "GLOBAL" -> "Global (Proxy All)"
+                "BYPASS_LAN" -> "Bypass LAN"
+                "BYPASS_LAN_IRAN" -> "Bypass LAN & Iran"
+                "CUSTOM" -> "Custom Rules"
+                else -> "Bypass LAN & Iran"
+            }
+        }
+        textView.text = "${getString(R.string.menu_routing_settings)}: $modeStr"
     }
 
     private fun updateVp8PacingEnabled(textView: TextView) {

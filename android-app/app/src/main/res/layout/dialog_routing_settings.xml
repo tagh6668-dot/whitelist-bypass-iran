@@ -1,60 +1,112 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="vertical"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:padding="16dp">
-
-    <CheckBox
-        android:id="@+id/routingEnableCheckbox"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/routing_enable_label"
-        android:textSize="16sp" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:layout_marginBottom="4dp"
-        android:text="@string/routing_config_hint"
-        android:textSize="14sp"
-        android:textStyle="bold" />
-
-    <EditText
-        android:id="@+id/routingConfigInput"
-        android:layout_width="match_parent"
-        android:layout_height="240dp"
-        android:background="@android:drawable/editbox_background_normal"
-        android:gravity="top|start"
-        android:hint="{ ... }"
-        android:inputType="textMultiLine"
-        android:scrollbars="vertical"
-        android:typeface="monospace"
-        android:textSize="12sp" />
+    android:layout_height="wrap_content">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:orientation="horizontal"
-        android:gravity="end">
+        android:orientation="vertical"
+        android:padding="16dp">
 
-        <Button
-            android:id="@+id/routingResetButton"
-            style="?android:attr/buttonBarButtonStyle"
-            android:layout_width="wrap_content"
+        <CheckBox
+            android:id="@+id/routingEnableCheckbox"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/routing_reset_btn" />
+            android:text="@string/routing_enable_label"
+            android:textSize="16sp" />
 
-        <Button
-            android:id="@+id/routingValidateButton"
-            style="?android:attr/buttonBarButtonStyle"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:id="@+id/routingSettingsContainer"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:text="@string/routing_validate_btn" />
+            android:orientation="vertical"
+            android:layout_marginTop="8dp">
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:layout_marginVertical="8dp"
+                android:background="?android:attr/listDivider" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Routing Mode"
+                android:textSize="14sp"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <Spinner
+                android:id="@+id/routingModeSpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="12dp"
+                android:minHeight="48dp" />
+
+            <LinearLayout
+                android:id="@+id/customRulesContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <com.google.android.material.tabs.TabLayout
+                    android:id="@+id/customRulesTabLayout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:id="@+id/customRulesHint"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="8dp"
+                    android:text="One domain or IP/CIDR per line (e.g. domain:ir or geoip:private)"
+                    android:textSize="12sp"
+                    android:textColor="?android:attr/textColorSecondary" />
+
+                <EditText
+                    android:id="@+id/customDirectInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="180dp"
+                    android:background="@android:drawable/editbox_background_normal"
+                    android:gravity="top|start"
+                    android:hint="e.g.\ndomain:ir\ngeoip:private\nfull:bale.ai"
+                    android:inputType="textMultiLine"
+                    android:scrollbars="vertical"
+                    android:typeface="monospace"
+                    android:textSize="13sp" />
+
+                <EditText
+                    android:id="@+id/customBlockedInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="180dp"
+                    android:background="@android:drawable/editbox_background_normal"
+                    android:gravity="top|start"
+                    android:hint="e.g.\ngeosite:category-ads-all"
+                    android:inputType="textMultiLine"
+                    android:scrollbars="vertical"
+                    android:typeface="monospace"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+
+                <EditText
+                    android:id="@+id/customProxyInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="180dp"
+                    android:background="@android:drawable/editbox_background_normal"
+                    android:gravity="top|start"
+                    android:hint="e.g.\ndomain:google.com"
+                    android:inputType="textMultiLine"
+                    android:scrollbars="vertical"
+                    android:typeface="monospace"
+                    android:textSize="13sp"
+                    android:visibility="gone" />
+
+            </LinearLayout>
+
+        </LinearLayout>
 
     </LinearLayout>
 
-</LinearLayout>
+</ScrollView>

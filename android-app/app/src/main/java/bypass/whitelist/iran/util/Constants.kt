@@ -55,6 +55,10 @@ object PrefsKeys {
     const val DNS_SECONDARY = "dns_secondary"
     const val ROUTING_ENABLED = "routing_enabled"
     const val ROUTING_CONFIG_JSON = "routing_config_json"
+    const val ROUTING_MODE = "routing_mode"
+    const val ROUTING_CUSTOM_DIRECT = "routing_custom_direct"
+    const val ROUTING_CUSTOM_BLOCK = "routing_custom_block"
+    const val ROUTING_CUSTOM_PROXY = "routing_custom_proxy"
 }
 
 object VP8Defaults {

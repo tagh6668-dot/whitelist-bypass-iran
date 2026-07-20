@@ -142,4 +142,20 @@ var socksPort: Long
   ]
 }""")!!
         set(value) = prefs.edit { putString(PrefsKeys.ROUTING_CONFIG_JSON, value) }
+
+    var routingMode: String
+        get() = prefs.getString(PrefsKeys.ROUTING_MODE, "BYPASS_LAN_IRAN")!!
+        set(value) = prefs.edit { putString(PrefsKeys.ROUTING_MODE, value) }
+
+    var routingCustomDirect: String
+        get() = prefs.getString(PrefsKeys.ROUTING_CUSTOM_DIRECT, "domain:ir\ngeoip:private\nfull:bale.ai\ngeoip:ir")!!
+        set(value) = prefs.edit { putString(PrefsKeys.ROUTING_CUSTOM_DIRECT, value) }
+
+    var routingCustomBlock: String
+        get() = prefs.getString(PrefsKeys.ROUTING_CUSTOM_BLOCK, "geosite:category-ads-all")!!
+        set(value) = prefs.edit { putString(PrefsKeys.ROUTING_CUSTOM_BLOCK, value) }
+
+    var routingCustomProxy: String
+        get() = prefs.getString(PrefsKeys.ROUTING_CUSTOM_PROXY, "")!!
+        set(value) = prefs.edit { putString(PrefsKeys.ROUTING_CUSTOM_PROXY, value) }
 }
