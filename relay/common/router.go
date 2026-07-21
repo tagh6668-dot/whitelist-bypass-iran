@@ -1,6 +1,7 @@
 package common
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Rule struct {
@@ -29,6 +31,16 @@ type domainMatcher struct {
 
 func parseDomainMatcher(s string) domainMatcher {
 	sLower := strings.ToLower(s)
+	if strings.HasPrefix(sLower, "geosite:") {
+		target := sLower[8:]
+		if target == "ir" {
+			return domainMatcher{matchType: "domain", pattern: "ir"}
+		}
+		if strings.HasPrefix(target, "category-") {
+			return domainMatcher{matchType: "keyword", pattern: target[9:]}
+		}
+		return domainMatcher{matchType: "domain", pattern: target}
+	}
 	if strings.HasPrefix(sLower, "regexp:") {
 		pattern := s[7:]
 		re, err := regexp.Compile(pattern)
@@ -284,8 +296,12 @@ func (r *Router) Route(hostPort string) string {
 			}
 		}
 	} else if r.domainStrategy == "IPIfNonMatch" || r.domainStrategy == "IPOnDemand" {
-		// Resolve domain to IPs and match against IP rules
-		resolvedIPs, err := net.LookupIP(host)
+		// Resolve domain to IPs with a strict timeout (300ms) to prevent blocking hot paths
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+		defer cancel()
+
+		var resolver net.Resolver
+		resolvedIPs, err := resolver.LookupIP(ctx, "ip", host)
 		if err == nil && len(resolvedIPs) > 0 {
 			for _, rule := range r.compiledRules {
 				for _, im := range rule.ipMatchers {

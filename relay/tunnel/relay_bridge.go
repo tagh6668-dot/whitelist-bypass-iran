@@ -532,7 +532,9 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 	}
 
 	sniffedHost := host
+	var origIP net.IP
 	if ip := net.ParseIP(hostOnly); ip != nil {
+		origIP = ip
 		if domain, ok := rb.dnsCache.Load(ip.String()); ok {
 			sniffedHost = domain.(string) + ":" + port
 			rb.logFn("relay: DNS Sniff %s -> %s", host, sniffedHost)
@@ -540,6 +542,12 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 	}
 
 	route := rb.router.Route(sniffedHost)
+	if route == "proxy" && origIP != nil {
+		ipRoute := rb.router.Route(host)
+		if ipRoute != "proxy" {
+			route = ipRoute
+		}
+	}
 	id := rb.nextID.Add(1)
 
 	if route == "block" {
@@ -670,6 +678,9 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 							rb.logFn("relay: DNS Redirect %s -> %s for %s", dstAddr, targetDNS, domain)
 							dstAddr = targetDNS
 						}
+					} else {
+						// For proxied or blocked domains, override the DNS query route with domainRoute
+						route = domainRoute
 					}
 				}
 			}
