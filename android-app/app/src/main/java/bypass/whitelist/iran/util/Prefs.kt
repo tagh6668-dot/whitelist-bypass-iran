@@ -123,29 +123,12 @@ var socksPort: Long
   "domainStrategy": "AsIs",
   "rules": [
     {
-      "outboundTag": "direct",
-      "domain": [
-        "domain:ir",
-        "full:bale.ai",
-        "domain:onlinepayamak.com",
-        "domain:cip27.mizbanfadns.net",
-        "domain:chaparnet.com",
-        "domain:balonsanat.com",
-        "domain:kowsarinstitute.com",
-        "domain:parscoders.com",
-        "domain:zarinpal.com",
-        "domain:anjammidam.com",
-        "domain:avalabzar.com",
-        "domain:torob.com",
-        "domain:digikala.com",
-        "regexp:.*\\.ir$",
-        "domain:gapgpt.app",
-        "domain:snapp.taxi",
-        "domain:aparat.com"
+      "outboundTag": "block",
+      "network": [
+        "udp"
       ],
-      "ip": [
-        "geoip:private",
-        "geoip:ir"
+      "port": [
+        "443"
       ]
     }
   ]
@@ -157,11 +140,11 @@ var socksPort: Long
         set(value) = prefs.edit { putString(PrefsKeys.ROUTING_MODE, value) }
 
     var routingCustomDirect: String
-        get() = prefs.getString(PrefsKeys.ROUTING_CUSTOM_DIRECT, "domain:ir\ngeoip:private\nfull:bale.ai\ngeoip:ir\ndomain:onlinepayamak.com\ndomain:cip27.mizbanfadns.net\ndomain:chaparnet.com\ndomain:balonsanat.com\ndomain:kowsarinstitute.com\ndomain:parscoders.com\ndomain:zarinpal.com\ndomain:anjammidam.com\ndomain:avalabzar.com\ndomain:torob.com\ndomain:digikala.com\nregexp:.*\\.ir$\ndomain:gapgpt.app\ndomain:snapp.taxi\ndomain:aparat.com")!!
+        get() = prefs.getString(PrefsKeys.ROUTING_CUSTOM_DIRECT, "")!!
         set(value) = prefs.edit { putString(PrefsKeys.ROUTING_CUSTOM_DIRECT, value) }
 
     var routingCustomBlock: String
-        get() = prefs.getString(PrefsKeys.ROUTING_CUSTOM_BLOCK, "")!!
+        get() = prefs.getString(PrefsKeys.ROUTING_CUSTOM_BLOCK, "udp:443")!!
         set(value) = prefs.edit { putString(PrefsKeys.ROUTING_CUSTOM_BLOCK, value) }
 
     var routingCustomProxy: String

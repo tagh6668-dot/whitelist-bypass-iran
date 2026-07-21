@@ -541,9 +541,9 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 		}
 	}
 
-	route := rb.router.Route(sniffedHost)
+	route := rb.router.RouteWithNetwork(sniffedHost, "tcp")
 	if route == "proxy" && origIP != nil {
-		ipRoute := rb.router.Route(host)
+		ipRoute := rb.router.RouteWithNetwork(host, "tcp")
 		if ipRoute != "proxy" {
 			route = ipRoute
 		}
@@ -660,12 +660,12 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 				continue
 			}
 
-			route := rb.router.Route(dstAddr)
+			route := rb.router.RouteWithNetwork(dstAddr, "udp")
 
 			// Local DNS logic: intercept DNS queries to route them based on the queried domain
 			if strings.HasSuffix(dstAddr, ":53") {
 				if domain, _, err := parseDNSResponse(buf[headerLen:n]); err == nil && domain != "" {
-					domainRoute := rb.router.Route(domain)
+					domainRoute := rb.router.RouteWithNetwork(domain, "udp")
 					rb.logFn("relay: DNS Sniff Query domain=%s route=%s", domain, domainRoute)
 					if domainRoute == "direct" {
 						route = "direct"

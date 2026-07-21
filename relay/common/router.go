@@ -3,19 +3,53 @@ package common
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
+type StringOrList []string
+
+func (s *StringOrList) UnmarshalJSON(data []byte) error {
+	var single string
+	if err := json.Unmarshal(data, &single); err == nil {
+		*s = []string{single}
+		return nil
+	}
+	var num int
+	if err := json.Unmarshal(data, &num); err == nil {
+		*s = []string{strconv.Itoa(num)}
+		return nil
+	}
+	var list []string
+	if err := json.Unmarshal(data, &list); err == nil {
+		*s = list
+		return nil
+	}
+	var numList []int
+	if err := json.Unmarshal(data, &numList); err == nil {
+		var res []string
+		for _, n := range numList {
+			res = append(res, strconv.Itoa(n))
+		}
+		*s = res
+		return nil
+	}
+	return nil
+}
+
 type Rule struct {
-	OutboundTag string   `json:"outboundTag"` // "direct", "proxy", "block"
-	Domain      []string `json:"domain"`
-	IP          []string `json:"ip"`
+	OutboundTag string       `json:"outboundTag"` // "direct", "proxy", "block"
+	Domain      StringOrList `json:"domain"`
+	IP          StringOrList `json:"ip"`
+	Port        StringOrList `json:"port"`
+	Network     StringOrList `json:"network"`
 }
 
 type RouterConfig struct {
@@ -30,6 +64,7 @@ type domainMatcher struct {
 }
 
 func parseDomainMatcher(s string) domainMatcher {
+	s = strings.TrimSpace(s)
 	sLower := strings.ToLower(s)
 	if strings.HasPrefix(sLower, "geosite:") {
 		target := sLower[8:]
@@ -42,7 +77,7 @@ func parseDomainMatcher(s string) domainMatcher {
 		return domainMatcher{matchType: "domain", pattern: target}
 	}
 	if strings.HasPrefix(sLower, "regexp:") {
-		pattern := s[7:]
+		pattern := strings.ToLower(s[7:])
 		re, err := regexp.Compile(pattern)
 		if err == nil {
 			return domainMatcher{matchType: "regexp", regex: re}
@@ -78,11 +113,38 @@ func (dm domainMatcher) Match(domain string) bool {
 	return false
 }
 
+type portMatcher struct {
+	startPort int
+	endPort   int
+}
+
+func parsePortMatcher(s string) (portMatcher, error) {
+	s = strings.TrimSpace(s)
+	if strings.Contains(s, "-") {
+		parts := strings.SplitN(s, "-", 2)
+		start, err1 := strconv.Atoi(strings.TrimSpace(parts[0]))
+		end, err2 := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err1 == nil && err2 == nil {
+			return portMatcher{startPort: start, endPort: end}, nil
+		}
+	}
+	p, err := strconv.Atoi(s)
+	if err == nil {
+		return portMatcher{startPort: p, endPort: p}, nil
+	}
+	return portMatcher{}, fmt.Errorf("invalid port: %s", s)
+}
+
+func (pm portMatcher) Match(port int) bool {
+	return port >= pm.startPort && port <= pm.endPort
+}
+
 type ipMatcher struct {
 	cidr *net.IPNet
 }
 
 func parseIPMatcher(s string) ([]ipMatcher, error) {
+	s = strings.TrimSpace(s)
 	if s == "geoip:private" {
 		privateRanges := []string{
 			"127.0.0.0/8",
@@ -165,6 +227,8 @@ type compiledRule struct {
 	outboundTag    string
 	domainMatchers []domainMatcher
 	ipMatchers     []ipMatcher
+	portMatchers   []portMatcher
+	networks       []string
 }
 
 type Router struct {
@@ -186,19 +250,19 @@ func NewRouter(logFn func(string, ...any)) *Router {
 	return r
 }
 
+func defaultUDP443Rule() compiledRule {
+	return compiledRule{
+		outboundTag: "block",
+		networks:    []string{"udp"},
+		portMatchers: []portMatcher{
+			{startPort: 443, endPort: 443},
+		},
+	}
+}
+
 func (r *Router) loadDefaults() {
 	r.compiledRules = []compiledRule{
-		{
-			outboundTag: "direct",
-			domainMatchers: []domainMatcher{
-				parseDomainMatcher("domain:bale.ai"),
-				parseDomainMatcher("domain:ir"),
-			},
-			ipMatchers: func() []ipMatcher {
-				m, _ := parseIPMatcher("geoip:private")
-				return m
-			}(),
-		},
+		defaultUDP443Rule(),
 	}
 }
 
@@ -227,6 +291,8 @@ func (r *Router) LoadConfig(configPath string) error {
 	}
 
 	var compiled []compiledRule
+	hasUDP443BlockRule := false
+
 	for _, rule := range cfg.Rules {
 		tag := strings.ToLower(rule.OutboundTag)
 		if tag != "direct" && tag != "proxy" && tag != "block" {
@@ -251,7 +317,31 @@ func (r *Router) LoadConfig(configPath string) error {
 			cRule.ipMatchers = append(cRule.ipMatchers, matchers...)
 		}
 
+		for _, pStr := range rule.Port {
+			pMatcher, err := parsePortMatcher(pStr)
+			if err != nil {
+				r.logFn("router: error parsing port matcher %q: %v", pStr, err)
+				continue
+			}
+			cRule.portMatchers = append(cRule.portMatchers, pMatcher)
+		}
+
+		for _, nStr := range rule.Network {
+			nLower := strings.ToLower(strings.TrimSpace(nStr))
+			if nLower == "tcp" || nLower == "udp" {
+				cRule.networks = append(cRule.networks, nLower)
+			}
+		}
+
+		if tag == "block" && len(cRule.networks) == 1 && cRule.networks[0] == "udp" && len(cRule.portMatchers) == 1 && cRule.portMatchers[0].startPort == 443 && cRule.portMatchers[0].endPort == 443 {
+			hasUDP443BlockRule = true
+		}
+
 		compiled = append(compiled, cRule)
+	}
+
+	if !hasUDP443BlockRule {
+		compiled = append(compiled, defaultUDP443Rule())
 	}
 
 	r.compiledRules = compiled
@@ -260,43 +350,98 @@ func (r *Router) LoadConfig(configPath string) error {
 }
 
 func (r *Router) Route(hostPort string) string {
+	return r.RouteWithNetwork(hostPort, "")
+}
+
+func (r *Router) RouteWithNetwork(hostPort string, network string) string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	host, _, err := net.SplitHostPort(hostPort)
+	host, portStr, err := net.SplitHostPort(hostPort)
 	if err != nil {
 		host = hostPort
+		portStr = ""
 	}
 
-	// Clean host (e.g. remove brackets from ipv6)
 	host = strings.TrimPrefix(host, "[")
 	host = strings.TrimSuffix(host, "]")
+
+	port, _ := strconv.Atoi(portStr)
+	network = strings.ToLower(strings.TrimSpace(network))
 
 	ip := net.ParseIP(host)
 	isIP := ip != nil
 
-	// Step 1: Match domain rules if it is not an IP
-	if !isIP {
-		for _, rule := range r.compiledRules {
+	for _, rule := range r.compiledRules {
+		// 1. Check network condition
+		if len(rule.networks) > 0 {
+			netMatch := false
+			for _, n := range rule.networks {
+				if n == network {
+					netMatch = true
+					break
+				}
+			}
+			if !netMatch {
+				continue
+			}
+		}
+
+		// 2. Check port condition
+		if len(rule.portMatchers) > 0 {
+			if port <= 0 {
+				continue
+			}
+			portMatch := false
+			for _, pm := range rule.portMatchers {
+				if pm.Match(port) {
+					portMatch = true
+					break
+				}
+			}
+			if !portMatch {
+				continue
+			}
+		}
+
+		// 3. Check domain condition
+		if len(rule.domainMatchers) > 0 {
+			if isIP {
+				continue
+			}
+			domainMatch := false
 			for _, dm := range rule.domainMatchers {
 				if dm.Match(host) {
-					return rule.outboundTag
+					domainMatch = true
+					break
 				}
 			}
+			if !domainMatch {
+				continue
+			}
 		}
-	}
 
-	// Step 2: Match IP rules if it is an IP
-	if isIP {
-		for _, rule := range r.compiledRules {
+		// 4. Check IP condition
+		if len(rule.ipMatchers) > 0 {
+			if !isIP {
+				continue
+			}
+			ipMatch := false
 			for _, im := range rule.ipMatchers {
 				if im.Match(ip) {
-					return rule.outboundTag
+					ipMatch = true
+					break
 				}
 			}
+			if !ipMatch {
+				continue
+			}
 		}
-	} else if r.domainStrategy == "IPIfNonMatch" || r.domainStrategy == "IPOnDemand" {
-		// Resolve domain to IPs with a strict timeout (300ms) to prevent blocking hot paths
+
+		return rule.outboundTag
+	}
+
+	if !isIP && (r.domainStrategy == "IPIfNonMatch" || r.domainStrategy == "IPOnDemand") {
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 		defer cancel()
 
@@ -304,10 +449,12 @@ func (r *Router) Route(hostPort string) string {
 		resolvedIPs, err := resolver.LookupIP(ctx, "ip", host)
 		if err == nil && len(resolvedIPs) > 0 {
 			for _, rule := range r.compiledRules {
-				for _, im := range rule.ipMatchers {
-					for _, rip := range resolvedIPs {
-						if im.Match(rip) {
-							return rule.outboundTag
+				if len(rule.ipMatchers) > 0 {
+					for _, im := range rule.ipMatchers {
+						for _, rip := range resolvedIPs {
+							if im.Match(rip) {
+								return rule.outboundTag
+							}
 						}
 					}
 				}
@@ -315,6 +462,5 @@ func (r *Router) Route(hostPort string) string {
 		}
 	}
 
-	// Default fallback
 	return "proxy"
 }

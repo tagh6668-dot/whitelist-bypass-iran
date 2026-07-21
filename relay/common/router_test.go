@@ -8,28 +8,25 @@ import (
 func TestRouterDefaults(t *testing.T) {
 	r := NewRouter(nil)
 
-	// Default rules: bale.ai and .ir should be direct
-	if res := r.Route("meet.bale.ai:443"); res != "direct" {
-		t.Errorf("expected direct for bale.ai, got %q", res)
+	// Default direct domain rules (bale.ai, .ir) are completely removed
+	if res := r.Route("meet.bale.ai:443"); res != "proxy" {
+		t.Errorf("expected proxy for bale.ai, got %q", res)
 	}
-	if res := r.Route("varzesh3.ir:80"); res != "direct" {
-		t.Errorf("expected direct for .ir, got %q", res)
-	}
-	if res := r.Route("sub.domain.ir:443"); res != "direct" {
-		t.Errorf("expected direct for .ir, got %q", res)
+	if res := r.Route("varzesh3.ir:80"); res != "proxy" {
+		t.Errorf("expected proxy for .ir, got %q", res)
 	}
 
-	// Local and private IPs should be direct
-	if res := r.Route("127.0.0.1:80"); res != "direct" {
-		t.Errorf("expected direct for localhost, got %q", res)
+	// UDP on port 443 must be blocked by default
+	if res := r.RouteWithNetwork("google.com:443", "udp"); res != "block" {
+		t.Errorf("expected block for UDP 443, got %q", res)
 	}
-	if res := r.Route("192.168.1.1:53"); res != "direct" {
-		t.Errorf("expected direct for private IP, got %q", res)
+	if res := r.RouteWithNetwork("1.2.3.4:443", "udp"); res != "block" {
+		t.Errorf("expected block for UDP 443, got %q", res)
 	}
 
-	// Normal web should be proxy
-	if res := r.Route("google.com:443"); res != "proxy" {
-		t.Errorf("expected proxy for google.com, got %q", res)
+	// TCP on port 443 should default to proxy
+	if res := r.RouteWithNetwork("google.com:443", "tcp"); res != "proxy" {
+		t.Errorf("expected proxy for TCP 443, got %q", res)
 	}
 }
 
@@ -40,19 +37,14 @@ func TestRouterConfig(t *testing.T) {
 			{
 				"outboundTag": "direct",
 				"domain": [
-					"domain:example.com",
-					"regexp:.*\\.local$"
-				],
-				"ip": [
-					"10.0.0.0/8"
+					"anjammidam.com",
+					"regexp:.*\\.ir$"
 				]
 			},
 			{
 				"outboundTag": "block",
-				"domain": [
-					"keyword:adserver",
-					"full:malicious.com"
-				]
+				"network": ["udp"],
+				"port": ["443"]
 			}
 		]
 	}`
@@ -74,23 +66,32 @@ func TestRouterConfig(t *testing.T) {
 	}
 
 	tests := []struct {
-		host string
-		want string
+		host    string
+		network string
+		want    string
 	}{
-		{"example.com:443", "direct"},
-		{"sub.example.com:80", "direct"},
-		{"test.local:8080", "direct"},
-		{"10.1.2.3:80", "direct"},
-		{"badadserver.com:443", "block"},
-		{"malicious.com:443", "block"},
-		{"notmalicious.com:443", "proxy"},
-		{"google.com:443", "proxy"},
+		// Bare domain direct matching (domain and subdomains)
+		{"anjammidam.com:443", "tcp", "direct"},
+		{"sub.anjammidam.com:80", "tcp", "direct"},
+		{"api.sub.anjammidam.com:443", "tcp", "direct"},
+
+		// Regex domain matching (domain and subdomains)
+		{"varzesh3.ir:80", "tcp", "direct"},
+		{"sub.domain.ir:443", "tcp", "direct"},
+		{"domain.ir:443", "tcp", "direct"},
+
+		// Other domains -> proxy
+		{"google.com:443", "tcp", "proxy"},
+
+		// UDP on port 443 -> block
+		{"google.com:443", "udp", "block"},
+		{"anjammidam.com:443", "udp", "direct"}, // Direct rule matches first before UDP 443 block
 	}
 
 	for _, tc := range tests {
-		got := r.Route(tc.host)
+		got := r.RouteWithNetwork(tc.host, tc.network)
 		if got != tc.want {
-			t.Errorf("Route(%q) = %q; want %q", tc.host, got, tc.want)
+			t.Errorf("RouteWithNetwork(%q, %q) = %q; want %q", tc.host, tc.network, got, tc.want)
 		}
 	}
 }

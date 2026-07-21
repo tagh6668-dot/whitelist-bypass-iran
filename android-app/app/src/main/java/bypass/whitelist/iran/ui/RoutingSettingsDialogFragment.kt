@@ -93,8 +93,8 @@ class RoutingSettingsDialogFragment : DialogFragment {
                 customProxyInput.visibility = if (position == 2) View.VISIBLE else View.GONE
 
                 hintText.text = when (position) {
-                    0 -> "Direct (bypass) domains and IPs (one per line, e.g. domain:ir, geoip:private)"
-                    1 -> "Blocked domains and IPs (one per line, e.g. geosite:category-ads-all)"
+                    0 -> "Direct (bypass) domains and IPs (one per line, e.g. anjammidam.com, regexp:.*\\.ir$)"
+                    1 -> "Blocked domains, IPs, ports (one per line, e.g. udp:443, geosite:category-ads-all)"
                     2 -> "Forced proxy domains and IPs (one per line, e.g. domain:google.com)"
                     else -> ""
                 }
@@ -147,9 +147,15 @@ class RoutingSettingsDialogFragment : DialogFragment {
 
         val rulesArray = JSONArray()
 
+        val defaultBlockRule = JSONObject().apply {
+            put("outboundTag", "block")
+            put("network", JSONArray().apply { put("udp") })
+            put("port", JSONArray().apply { put("443") })
+        }
+
         when (mode) {
             "GLOBAL" -> {
-                // Empty rules array, everything defaults to proxy
+                rulesArray.put(defaultBlockRule)
             }
             "BYPASS_LAN" -> {
                 val rule = JSONObject()
@@ -158,6 +164,7 @@ class RoutingSettingsDialogFragment : DialogFragment {
                 ipArray.put("geoip:private")
                 rule.put("ip", ipArray)
                 rulesArray.put(rule)
+                rulesArray.put(defaultBlockRule)
             }
             "BYPASS_LAN_IRAN" -> {
                 // Bypass LAN and Iran
@@ -184,6 +191,7 @@ class RoutingSettingsDialogFragment : DialogFragment {
                 blockRule.put("domain", blockDomainArray)
 
                 rulesArray.put(blockRule)
+                rulesArray.put(defaultBlockRule)
             }
             "CUSTOM" -> {
                 fun addCustomRule(tag: String, text: String) {
@@ -197,11 +205,23 @@ class RoutingSettingsDialogFragment : DialogFragment {
 
                     val domains = JSONArray()
                     val ips = JSONArray()
+                    val ports = JSONArray()
+                    val networks = JSONArray()
 
                     for (line in lines) {
                         if (line.startsWith("#") || line.startsWith("//")) continue
                         val lower = line.lowercase()
-                        if (lower.startsWith("domain:") || lower.startsWith("full:") || lower.startsWith("regexp:") || lower.startsWith("keyword:") || lower.startsWith("geosite:")) {
+                        if (lower == "udp:443" || lower == "443/udp") {
+                            networks.put("udp")
+                            ports.put("443")
+                        } else if (lower.startsWith("udp:")) {
+                            networks.put("udp")
+                            ports.put(line.substring(4).trim())
+                        } else if (lower.startsWith("port:")) {
+                            ports.put(line.substring(5).trim())
+                        } else if (lower.startsWith("network:")) {
+                            networks.put(line.substring(8).trim())
+                        } else if (lower.startsWith("domain:") || lower.startsWith("full:") || lower.startsWith("regexp:") || lower.startsWith("keyword:") || lower.startsWith("geosite:")) {
                             domains.put(line)
                         } else if (lower.startsWith("geoip:")) {
                             ips.put(line)
@@ -215,20 +235,45 @@ class RoutingSettingsDialogFragment : DialogFragment {
                         }
                     }
 
-                    if (domains.length() > 0) {
-                        rule.put("domain", domains)
-                    }
-                    if (ips.length() > 0) {
-                        rule.put("ip", ips)
-                    }
+                    if (domains.length() > 0) rule.put("domain", domains)
+                    if (ips.length() > 0) rule.put("ip", ips)
+                    if (ports.length() > 0) rule.put("port", ports)
+                    if (networks.length() > 0) rule.put("network", networks)
 
-                    rulesArray.put(rule)
+                    if (domains.length() > 0 || ips.length() > 0 || ports.length() > 0 || networks.length() > 0) {
+                        rulesArray.put(rule)
+                    }
                 }
 
                 // Compile block first, then direct, then proxy
                 addCustomRule("block", customBlock)
                 addCustomRule("direct", customDirect)
                 addCustomRule("proxy", customProxy)
+
+                // Ensure default UDP 443 block rule is included if not explicitly present
+                var hasUDP443Block = false
+                for (i in 0 until rulesArray.length()) {
+                    val r = rulesArray.getJSONObject(i)
+                    if (r.optString("outboundTag") == "block") {
+                        val netArr = r.optJSONArray("network")
+                        val portArr = r.optJSONArray("port")
+                        if (netArr != null && portArr != null && netArr.length() > 0 && portArr.length() > 0) {
+                            if (netArr.getString(0) == "udp" && portArr.getString(0) == "443") {
+                                hasUDP443Block = true
+                                break
+                            }
+                        }
+                    }
+                }
+                if (!hasUDP443Block) {
+                    val defaultBlockRule = JSONObject()
+                    defaultBlockRule.put("outboundTag", "block")
+                    val netArr = JSONArray().apply { put("udp") }
+                    val portArr = JSONArray().apply { put("443") }
+                    defaultBlockRule.put("network", netArr)
+                    defaultBlockRule.put("port", portArr)
+                    rulesArray.put(defaultBlockRule)
+                }
             }
         }
 
