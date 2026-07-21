@@ -1,6 +1,7 @@
 package bypass.whitelist.iran.tunnel
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.util.Log
 import bypass.whitelist.iran.util.ParamCallback
 import bypass.whitelist.iran.util.Prefs
@@ -53,6 +54,13 @@ class HeadlessRelayController(
                     "--socks-user", SocksAuth.user,
                     "--socks-pass", SocksAuth.pass
                 )
+
+                val systemDns = getSystemDnsServers()
+                if (systemDns.isNotEmpty()) {
+                    args.add("--system-dns")
+                    args.add(systemDns.joinToString(","))
+                    onLog("System DNS servers passed: ${systemDns.joinToString(",")}")
+                }
 
                 if (Prefs.routingEnabled) {
                     val routingFile = File(context.filesDir, "routing.json")
@@ -156,5 +164,12 @@ class HeadlessRelayController(
         } catch (e: Exception) {
             Log.e("RELAY", "writeStdin error: ${e.message}")
         }
+    }
+
+    private fun getSystemDnsServers(): List<String> {
+        val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return emptyList()
+        val network = connectivityManager.activeNetwork ?: return emptyList()
+        val linkProperties = connectivityManager.getLinkProperties(network) ?: return emptyList()
+        return linkProperties.dnsServers.mapNotNull { it.hostAddress }
     }
 }

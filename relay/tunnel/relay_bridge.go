@@ -52,6 +52,8 @@ type RelayBridge struct {
 
 	dnsCache sync.Map // IP (string) -> Domain (string)
 
+	systemDNS []string
+
 	sendCount atomic.Uint32
 	recvCount atomic.Uint32
 
@@ -94,6 +96,14 @@ func NewRelayBridge(tunnel DataTunnel, mode string, readBuf int, logFn func(stri
 
 func (rb *RelayBridge) LoadRoutingConfig(path string) error {
 	return rb.router.LoadConfig(path)
+}
+
+func (rb *RelayBridge) SetSystemDNS(dnsStr string) {
+	if dnsStr == "" {
+		return
+	}
+	rb.systemDNS = strings.Split(dnsStr, ",")
+	rb.logFn("relay: system DNS servers loaded: %v", rb.systemDNS)
 }
 
 func (rb *RelayBridge) udpCleanupWorker() {
@@ -643,6 +653,27 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 			}
 
 			route := rb.router.Route(dstAddr)
+
+			// Local DNS logic: intercept DNS queries to route them based on the queried domain
+			if strings.HasSuffix(dstAddr, ":53") {
+				if domain, _, err := parseDNSResponse(buf[headerLen:n]); err == nil && domain != "" {
+					domainRoute := rb.router.Route(domain)
+					rb.logFn("relay: DNS Sniff Query domain=%s route=%s", domain, domainRoute)
+					if domainRoute == "direct" {
+						route = "direct"
+						// Redirect query to system DNS if available to bypass tunnel and censorship
+						if len(rb.systemDNS) > 0 {
+							targetDNS := rb.systemDNS[0]
+							if !strings.Contains(targetDNS, ":") {
+								targetDNS = targetDNS + ":53"
+							}
+							rb.logFn("relay: DNS Redirect %s -> %s for %s", dstAddr, targetDNS, domain)
+							dstAddr = targetDNS
+						}
+					}
+				}
+			}
+
 			if route == "block" {
 				continue
 			}

@@ -17,15 +17,19 @@ func main() {
 	socksUser := flag.String("socks-user", "", "SOCKS5 proxy username")
 	socksPass := flag.String("socks-pass", "", "SOCKS5 proxy password")
 	routingConfig := flag.String("routing-config", "", "path to routing rules config JSON file (optional)")
+	systemDNS := flag.String("system-dns", "", "comma-separated list of system DNS servers (optional)")
 	flag.Parse()
 
 	if *mode == "" {
-		fmt.Fprintf(os.Stderr, "Usage: relay --mode bale-headless-joiner [--socks-port N] [--socks-user U] [--socks-pass P] [--routing-config PATH]\n")
+		fmt.Fprintf(os.Stderr, "Usage: relay --mode bale-headless-joiner [--socks-port N] [--socks-user U] [--socks-pass P] [--routing-config PATH] [--system-dns DNS]\n")
 		os.Exit(1)
 	}
 
 	startJoinerBridge := func(tun tunnel.DataTunnel, readBuf int) {
 		rb := tunnel.NewRelayBridgeWithAuth(tun, "joiner", readBuf, log.Printf, *socksUser, *socksPass)
+		if *systemDNS != "" {
+			rb.SetSystemDNS(*systemDNS)
+		}
 		if *routingConfig != "" {
 			if err := rb.LoadRoutingConfig(*routingConfig); err != nil {
 				log.Printf("router: failed to load config from %s: %v", *routingConfig, err)
