@@ -69,24 +69,28 @@
                     android:id="@+id/customDirectInput"
                     android:layout_width="match_parent"
                     android:layout_height="180dp"
-                    android:background="@android:drawable/editbox_background_normal"
                     android:gravity="top|start"
                     android:hint="e.g.\ndomain:ir\ngeoip:private\nfull:bale.ai"
                     android:inputType="textMultiLine"
                     android:scrollbars="vertical"
                     android:typeface="monospace"
+                    android:padding="8dp"
+                    android:background="?android:attr/editTextBackground"
+                    android:textColor="?android:attr/textColorPrimary"
                     android:textSize="13sp" />
 
                 <EditText
                     android:id="@+id/customBlockedInput"
                     android:layout_width="match_parent"
                     android:layout_height="180dp"
-                    android:background="@android:drawable/editbox_background_normal"
                     android:gravity="top|start"
                     android:hint="e.g.\ngeosite:category-ads-all"
                     android:inputType="textMultiLine"
                     android:scrollbars="vertical"
                     android:typeface="monospace"
+                    android:padding="8dp"
+                    android:background="?android:attr/editTextBackground"
+                    android:textColor="?android:attr/textColorPrimary"
                     android:textSize="13sp"
                     android:visibility="gone" />
 
@@ -94,12 +98,14 @@
                     android:id="@+id/customProxyInput"
                     android:layout_width="match_parent"
                     android:layout_height="180dp"
-                    android:background="@android:drawable/editbox_background_normal"
                     android:gravity="top|start"
                     android:hint="e.g.\ndomain:google.com"
                     android:inputType="textMultiLine"
                     android:scrollbars="vertical"
                     android:typeface="monospace"
+                    android:padding="8dp"
+                    android:background="?android:attr/editTextBackground"
+                    android:textColor="?android:attr/textColorPrimary"
                     android:textSize="13sp"
                     android:visibility="gone" />
 

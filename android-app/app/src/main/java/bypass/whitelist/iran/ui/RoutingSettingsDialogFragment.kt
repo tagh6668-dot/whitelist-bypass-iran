@@ -199,10 +199,19 @@ class RoutingSettingsDialogFragment : DialogFragment {
                     val ips = JSONArray()
 
                     for (line in lines) {
-                        if (line.startsWith("geoip:") || line.contains("/") || (line.any { it.isDigit() } && line.contains("."))) {
+                        if (line.startsWith("#") || line.startsWith("//")) continue
+                        val lower = line.lowercase()
+                        if (lower.startsWith("domain:") || lower.startsWith("full:") || lower.startsWith("regexp:") || lower.startsWith("keyword:") || lower.startsWith("geosite:")) {
+                            domains.put(line)
+                        } else if (lower.startsWith("geoip:")) {
                             ips.put(line)
                         } else {
-                            domains.put(line)
+                            val isProbablyIp = lower.contains("/") || (lower.any { it.isDigit() } && !lower.any { it in 'a'..'z' || it in 'A'..'Z' })
+                            if (isProbablyIp) {
+                                ips.put(line)
+                            } else {
+                                domains.put(line)
+                            }
                         }
                     }
 

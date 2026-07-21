@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pion/webrtc/v4"
@@ -125,12 +126,20 @@ func (j *BaleHeadlessJoiner) RunWithParams(jsonParams string) {
 
 	reconnectingTun := NewReconnectingTunnel()
 	var onceConnected sync.Once
+	var consecutiveErrors atomic.Int32
 
 	for {
 		j.mu.Lock()
 		closed := j.closed
 		j.mu.Unlock()
 		if closed {
+			return
+		}
+
+		if consecutiveErrors.Add(1) > 10 {
+			j.logFn("bale-joiner: max consecutive errors reached, disconnecting")
+			j.Status.EmitStatusError("Max connection retries reached")
+			j.Close()
 			return
 		}
 
@@ -231,6 +240,7 @@ func (j *BaleHeadlessJoiner) RunWithParams(jsonParams string) {
 		})
 
 		sess.OnConnected = func(tun tunnel.DataTunnel) {
+			consecutiveErrors.Store(0)
 			j.logFn("bale-joiner: === TUNNEL CONNECTED ===")
 			j.Status.EmitStatus(common.StatusTunnelConnected)
 			reconnectingTun.UpdateTunnel(tun)
