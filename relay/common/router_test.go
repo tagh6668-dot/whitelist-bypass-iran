@@ -39,6 +39,9 @@ func TestRouterConfig(t *testing.T) {
 				"domain": [
 					"anjammidam.com",
 					"regexp:.*\\.ir$"
+				],
+				"ip": [
+					"geoip:private"
 				]
 			},
 			{

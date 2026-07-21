@@ -337,7 +337,17 @@ func (r *Router) LoadConfig(configPath string) error {
 			hasUDP443BlockRule = true
 		}
 
-		compiled = append(compiled, cRule)
+		if len(cRule.domainMatchers) > 0 && len(cRule.ipMatchers) > 0 {
+			domainRule := cRule
+			domainRule.ipMatchers = nil
+			compiled = append(compiled, domainRule)
+
+			ipRule := cRule
+			ipRule.domainMatchers = nil
+			compiled = append(compiled, ipRule)
+		} else {
+			compiled = append(compiled, cRule)
+		}
 	}
 
 	if !hasUDP443BlockRule {

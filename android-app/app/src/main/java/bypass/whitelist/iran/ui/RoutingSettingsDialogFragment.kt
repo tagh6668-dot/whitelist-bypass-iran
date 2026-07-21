@@ -167,29 +167,31 @@ class RoutingSettingsDialogFragment : DialogFragment {
                 rulesArray.put(defaultBlockRule)
             }
             "BYPASS_LAN_IRAN" -> {
-                // Bypass LAN and Iran
-                val directRule = JSONObject()
-                directRule.put("outboundTag", "direct")
+                // Bypass LAN and Iran Domains
+                val directDomainRule = JSONObject().apply {
+                    put("outboundTag", "direct")
+                    put("domain", JSONArray().apply {
+                        put("domain:ir")
+                        put("full:bale.ai")
+                    })
+                }
+                rulesArray.put(directDomainRule)
 
-                val domainArray = JSONArray()
-                domainArray.put("domain:ir")
-                domainArray.put("full:bale.ai")
-                directRule.put("domain", domainArray)
-
-                val ipArray = JSONArray()
-                ipArray.put("geoip:private")
-                ipArray.put("geoip:ir")
-                directRule.put("ip", ipArray)
-
-                rulesArray.put(directRule)
+                // Bypass LAN and Iran IPs
+                val directIpRule = JSONObject().apply {
+                    put("outboundTag", "direct")
+                    put("ip", JSONArray().apply {
+                        put("geoip:private")
+                        put("geoip:ir")
+                    })
+                }
+                rulesArray.put(directIpRule)
 
                 // Block known ad category
-                val blockRule = JSONObject()
-                blockRule.put("outboundTag", "block")
-                val blockDomainArray = JSONArray()
-                blockDomainArray.put("geosite:category-ads-all")
-                blockRule.put("domain", blockDomainArray)
-
+                val blockRule = JSONObject().apply {
+                    put("outboundTag", "block")
+                    put("domain", JSONArray().apply { put("geosite:category-ads-all") })
+                }
                 rulesArray.put(blockRule)
                 rulesArray.put(defaultBlockRule)
             }
@@ -235,13 +237,28 @@ class RoutingSettingsDialogFragment : DialogFragment {
                         }
                     }
 
-                    if (domains.length() > 0) rule.put("domain", domains)
-                    if (ips.length() > 0) rule.put("ip", ips)
-                    if (ports.length() > 0) rule.put("port", ports)
-                    if (networks.length() > 0) rule.put("network", networks)
-
-                    if (domains.length() > 0 || ips.length() > 0 || ports.length() > 0 || networks.length() > 0) {
-                        rulesArray.put(rule)
+                    if (domains.length() > 0) {
+                        val dRule = JSONObject()
+                        dRule.put("outboundTag", tag)
+                        dRule.put("domain", domains)
+                        if (ports.length() > 0) dRule.put("port", ports)
+                        if (networks.length() > 0) dRule.put("network", networks)
+                        rulesArray.put(dRule)
+                    }
+                    if (ips.length() > 0) {
+                        val ipRule = JSONObject()
+                        ipRule.put("outboundTag", tag)
+                        ipRule.put("ip", ips)
+                        if (ports.length() > 0) ipRule.put("port", ports)
+                        if (networks.length() > 0) ipRule.put("network", networks)
+                        rulesArray.put(ipRule)
+                    }
+                    if (domains.length() == 0 && ips.length() == 0 && (ports.length() > 0 || networks.length() > 0)) {
+                        val otherRule = JSONObject()
+                        otherRule.put("outboundTag", tag)
+                        if (ports.length() > 0) otherRule.put("port", ports)
+                        if (networks.length() > 0) otherRule.put("network", networks)
+                        rulesArray.put(otherRule)
                     }
                 }
 
