@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -48,6 +49,8 @@ type RelayBridge struct {
 	socksPass      string
 
 	router *common.Router
+
+	dnsCache sync.Map // IP (string) -> Domain (string)
 
 	sendCount atomic.Uint32
 	recvCount atomic.Uint32
@@ -288,6 +291,16 @@ func (rb *RelayBridge) handleJoinerMessage(connID uint32, msgType byte, payload 
 		}
 		uc := uval.(*udpClient)
 		uc.lastActive.Store(time.Now().Unix())
+
+		if strings.HasSuffix(uc.flowKey, ":53") {
+			if domain, ips, err := parseDNSResponse(payload); err == nil && domain != "" {
+				for _, ip := range ips {
+					rb.dnsCache.Store(ip.String(), domain)
+					rb.logFn("relay: DNS Sniff Map %s -> %s", ip.String(), domain)
+				}
+			}
+		}
+
 		reply := make([]byte, len(uc.socksHdr)+len(payload))
 		copy(reply, uc.socksHdr)
 		copy(reply[len(uc.socksHdr):], payload)
@@ -501,14 +514,22 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 		return
 	}
 
-	hostOnly, _, _ := net.SplitHostPort(host)
+	hostOnly, port, _ := net.SplitHostPort(host)
 	if ip := net.ParseIP(hostOnly); ip != nil && ip.IsUnspecified() {
 		conn.Write(common.ConnFail)
 		conn.Close()
 		return
 	}
 
-	route := rb.router.Route(host)
+	sniffedHost := host
+	if ip := net.ParseIP(hostOnly); ip != nil {
+		if domain, ok := rb.dnsCache.Load(ip.String()); ok {
+			sniffedHost = domain.(string) + ":" + port
+			rb.logFn("relay: DNS Sniff %s -> %s", host, sniffedHost)
+		}
+	}
+
+	route := rb.router.Route(sniffedHost)
 	id := rb.nextID.Add(1)
 
 	if route == "block" {
@@ -698,6 +719,16 @@ func (rb *RelayBridge) handleDirectUDP(clientAddr *net.UDPAddr, dstAddr string, 
 				if err != nil {
 					return
 				}
+
+				if strings.HasSuffix(dstAddr, ":53") {
+					if domain, ips, err := parseDNSResponse(buf[:n]); err == nil && domain != "" {
+						for _, ip := range ips {
+							rb.dnsCache.Store(ip.String(), domain)
+							rb.logFn("relay: DNS Sniff Map (direct) %s -> %s", ip.String(), domain)
+						}
+					}
+				}
+
 				reply := make([]byte, len(hdrCopy)+n)
 				copy(reply, hdrCopy)
 				copy(reply[len(hdrCopy):], buf[:n])

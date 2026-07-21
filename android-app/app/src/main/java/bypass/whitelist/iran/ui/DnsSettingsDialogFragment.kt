@@ -12,7 +12,15 @@ import bypass.whitelist.iran.R
 import bypass.whitelist.iran.util.DnsMode
 import bypass.whitelist.iran.util.Prefs
 
-class DnsSettingsDialogFragment : DialogFragment() {
+class DnsSettingsDialogFragment : DialogFragment {
+
+    private var onSaveListener: (() -> Unit)? = null
+
+    constructor() : super()
+
+    constructor(onSaveListener: () -> Unit) : super() {
+        this.onSaveListener = onSaveListener
+    }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val view = layoutInflater.inflate(R.layout.dialog_dns_settings, null)
@@ -45,6 +53,7 @@ class DnsSettingsDialogFragment : DialogFragment() {
                     Prefs.dnsPrimary = primaryInput.text.toString()
                     Prefs.dnsSecondary = secondaryInput.text.toString()
                 }
+                onSaveListener?.invoke()
             }
             .setNegativeButton(android.R.string.cancel, null)
             .create()

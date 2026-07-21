@@ -93,7 +93,9 @@ class SettingsDialogFragment : DialogFragment() {
         }
 
         dnsItem.setOnClickListener {
-            DnsSettingsDialogFragment().show(childFragmentManager, DnsSettingsDialogFragment.TAG)
+            DnsSettingsDialogFragment {
+                listener?.onReset()
+            }.show(childFragmentManager, DnsSettingsDialogFragment.TAG)
         }
 
         val routingItem = view.findViewById<TextView>(R.id.routingItem)
@@ -101,6 +103,7 @@ class SettingsDialogFragment : DialogFragment() {
         routingItem.setOnClickListener {
             RoutingSettingsDialogFragment {
                 updateRoutingLabel(routingItem)
+                listener?.onReset()
             }.show(childFragmentManager, RoutingSettingsDialogFragment.TAG)
         }
 

@@ -115,7 +115,7 @@ var socksPort: Long
         set(value) = prefs.edit { putString(PrefsKeys.DNS_SECONDARY, value) }
 
     var routingEnabled: Boolean
-        get() = prefs.getBoolean(PrefsKeys.ROUTING_ENABLED, false)
+        get() = prefs.getBoolean(PrefsKeys.ROUTING_ENABLED, true)
         set(value) = prefs.edit { putBoolean(PrefsKeys.ROUTING_ENABLED, value) }
 
     var routingConfigJson: String
