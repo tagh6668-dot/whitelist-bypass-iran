@@ -125,6 +125,8 @@ var socksPort: Long
     {
       "outboundTag": "direct",
       "domain": [
+        "domain:ir",
+        "full:bale.ai",
         "domain:onlinepayamak.com",
         "domain:cip27.mizbanfadns.net",
         "domain:chaparnet.com",
@@ -140,6 +142,10 @@ var socksPort: Long
         "domain:gapgpt.app",
         "domain:snapp.taxi",
         "domain:aparat.com"
+      ],
+      "ip": [
+        "geoip:private",
+        "geoip:ir"
       ]
     }
   ]
@@ -151,7 +157,7 @@ var socksPort: Long
         set(value) = prefs.edit { putString(PrefsKeys.ROUTING_MODE, value) }
 
     var routingCustomDirect: String
-        get() = prefs.getString(PrefsKeys.ROUTING_CUSTOM_DIRECT, "domain:onlinepayamak.com\ndomain:cip27.mizbanfadns.net\ndomain:chaparnet.com\ndomain:balonsanat.com\ndomain:kowsarinstitute.com\ndomain:parscoders.com\ndomain:zarinpal.com\ndomain:anjammidam.com\ndomain:avalabzar.com\ndomain:torob.com\ndomain:digikala.com\nregexp:.*\\.ir$\ndomain:gapgpt.app\ndomain:snapp.taxi\ndomain:aparat.com")!!
+        get() = prefs.getString(PrefsKeys.ROUTING_CUSTOM_DIRECT, "domain:ir\ngeoip:private\nfull:bale.ai\ngeoip:ir\ndomain:onlinepayamak.com\ndomain:cip27.mizbanfadns.net\ndomain:chaparnet.com\ndomain:balonsanat.com\ndomain:kowsarinstitute.com\ndomain:parscoders.com\ndomain:zarinpal.com\ndomain:anjammidam.com\ndomain:avalabzar.com\ndomain:torob.com\ndomain:digikala.com\nregexp:.*\\.ir$\ndomain:gapgpt.app\ndomain:snapp.taxi\ndomain:aparat.com")!!
         set(value) = prefs.edit { putString(PrefsKeys.ROUTING_CUSTOM_DIRECT, value) }
 
     var routingCustomBlock: String

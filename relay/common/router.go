@@ -89,6 +89,43 @@ func parseIPMatcher(s string) ([]ipMatcher, error) {
 		return matchers, nil
 	}
 
+	if s == "geoip:ir" {
+		irRanges := []string{
+			"2.144.0.0/12",
+			"5.52.0.0/14",
+			"5.160.0.0/11",
+			"31.2.0.0/15",
+			"31.47.0.0/16",
+			"37.98.0.0/15",
+			"37.114.0.0/15",
+			"37.254.0.0/15",
+			"46.100.0.0/14",
+			"46.224.0.0/13",
+			"78.38.0.0/15",
+			"78.158.0.0/15",
+			"80.75.0.0/17",
+			"80.191.0.0/16",
+			"85.185.0.0/16",
+			"89.165.0.0/16",
+			"91.98.0.0/15",
+			"91.108.0.0/14",
+			"94.182.0.0/15",
+			"109.122.0.0/15",
+			"151.232.0.0/14",
+			"178.131.0.0/16",
+			"185.0.0.0/8",
+			"188.136.0.0/14",
+			"188.253.0.0/16",
+			"217.218.0.0/15",
+		}
+		var matchers []ipMatcher
+		for _, ir := range irRanges {
+			_, cidr, _ := net.ParseCIDR(ir)
+			matchers = append(matchers, ipMatcher{cidr: cidr})
+		}
+		return matchers, nil
+	}
+
 	_, cidr, err := net.ParseCIDR(s)
 	if err != nil {
 		ip := net.ParseIP(s)
