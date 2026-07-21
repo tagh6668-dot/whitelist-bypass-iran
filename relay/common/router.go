@@ -167,7 +167,7 @@ func NewRouter(logFn func(string, ...any)) *Router {
 		logFn = func(string, ...any) {}
 	}
 	r := &Router{
-		domainStrategy: "IPIfNonMatch",
+		domainStrategy: "AsIs",
 		logFn:          logFn,
 	}
 	r.loadDefaults()

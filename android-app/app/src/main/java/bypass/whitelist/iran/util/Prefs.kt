@@ -120,7 +120,7 @@ var socksPort: Long
 
     var routingConfigJson: String
         get() = prefs.getString(PrefsKeys.ROUTING_CONFIG_JSON, """{
-  "domainStrategy": "IPIfNonMatch",
+  "domainStrategy": "AsIs",
   "rules": [
     {
       "outboundTag": "direct",

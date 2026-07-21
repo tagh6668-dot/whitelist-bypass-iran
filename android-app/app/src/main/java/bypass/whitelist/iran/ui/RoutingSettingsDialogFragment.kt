@@ -143,7 +143,7 @@ class RoutingSettingsDialogFragment : DialogFragment {
         customProxy: String
     ): String {
         val root = JSONObject()
-        root.put("domainStrategy", "IPIfNonMatch")
+        root.put("domainStrategy", "AsIs")
 
         val rulesArray = JSONArray()
 
