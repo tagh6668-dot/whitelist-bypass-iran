@@ -98,3 +98,58 @@ func TestRouterConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestRouterGeoIPIR(t *testing.T) {
+	configJSON := `{
+		"rules": [
+			{
+				"outboundTag": "direct",
+				"ip": ["geoip:ir"]
+			}
+		]
+	}`
+
+	tmpFile, err := os.CreateTemp("", "routing_config_*.json")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(configJSON)); err != nil {
+		t.Fatalf("failed to write config to temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	r := NewRouter(nil)
+	if err := r.LoadConfig(tmpFile.Name()); err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	tests := []struct {
+		host string
+		want string
+	}{
+		// Irancell IP (2.144.1.2) -> direct
+		{"2.144.1.2:443", "direct"},
+		// Respina IP (5.160.1.2) -> proxy (no longer in Respina range since Respina's /16 is not in prefixlen<=17 list, or wait, is 5.160.1.2 in our list? Let's check: 5.160.0.0/16 is not in <=17 list, but we have other Respina ranges like 5.190.0.0/16. Let's test 5.190.1.2:443 -> direct)
+		{"5.190.1.2:443", "direct"},
+		// TCI IP (217.218.1.2) -> direct
+		{"217.218.1.2:443", "direct"},
+		// Hetzner Germany IP (46.224.1.2) -> proxy
+		{"46.224.1.2:443", "proxy"},
+		// Hetzner Germany IP (91.98.1.2) -> proxy
+		{"91.98.1.2:443", "proxy"},
+		// Telegram IP (91.108.4.5) -> proxy
+		{"91.108.4.5:443", "proxy"},
+		// Google IP -> proxy
+		{"8.8.8.8:53", "proxy"},
+	}
+
+	for _, tc := range tests {
+		got := r.Route(tc.host)
+		if got != tc.want {
+			t.Errorf("Route(%q) = %q; want %q", tc.host, got, tc.want)
+		}
+	}
+}
+
