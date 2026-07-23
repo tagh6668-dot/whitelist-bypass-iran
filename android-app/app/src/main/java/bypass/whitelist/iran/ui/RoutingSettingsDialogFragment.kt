@@ -202,50 +202,30 @@ class RoutingSettingsDialogFragment : DialogFragment {
                         .filter { it.isNotEmpty() }
                     if (lines.isEmpty()) return
 
+                    val rule = JSONObject()
+                    rule.put("outboundTag", tag)
+
                     val domains = JSONArray()
                     val ips = JSONArray()
-                    val portNetRules = mutableListOf<JSONObject>()
+                    val ports = JSONArray()
+                    val networks = JSONArray()
 
                     for (line in lines) {
                         if (line.startsWith("#") || line.startsWith("//")) continue
                         val lower = line.lowercase()
                         if (lower == "udp:443" || lower == "443/udp") {
-                            val r = JSONObject().apply {
-                                put("outboundTag", tag)
-                                put("network", JSONArray().apply { put("udp") })
-                                put("port", JSONArray().apply { put("443") })
-                            }
-                            portNetRules.add(r)
+                            networks.put("udp")
+                            ports.put("443")
                         } else if (lower.startsWith("udp:")) {
-                            val portStr = line.substring(4).trim()
-                            val r = JSONObject().apply {
-                                put("outboundTag", tag)
-                                put("network", JSONArray().apply { put("udp") })
-                                put("port", JSONArray().apply { put(portStr) })
-                            }
-                            portNetRules.add(r)
+                            networks.put("udp")
+                            ports.put(line.substring(4).trim())
                         } else if (lower.startsWith("tcp:")) {
-                            val portStr = line.substring(4).trim()
-                            val r = JSONObject().apply {
-                                put("outboundTag", tag)
-                                put("network", JSONArray().apply { put("tcp") })
-                                put("port", JSONArray().apply { put(portStr) })
-                            }
-                            portNetRules.add(r)
+                            networks.put("tcp")
+                            ports.put(line.substring(4).trim())
                         } else if (lower.startsWith("port:")) {
-                            val portStr = line.substring(5).trim()
-                            val r = JSONObject().apply {
-                                put("outboundTag", tag)
-                                put("port", JSONArray().apply { put(portStr) })
-                            }
-                            portNetRules.add(r)
+                            ports.put(line.substring(5).trim())
                         } else if (lower.startsWith("network:")) {
-                            val netStr = line.substring(8).trim()
-                            val r = JSONObject().apply {
-                                put("outboundTag", tag)
-                                put("network", JSONArray().apply { put(netStr) })
-                            }
-                            portNetRules.add(r)
+                            networks.put(line.substring(8).trim())
                         } else if (lower.startsWith("domain:") || lower.startsWith("full:") || lower.startsWith("regexp:") || lower.startsWith("keyword:") || lower.startsWith("geosite:")) {
                             domains.put(line)
                         } else if (lower.startsWith("geoip:")) {
@@ -260,20 +240,13 @@ class RoutingSettingsDialogFragment : DialogFragment {
                         }
                     }
 
-                    if (domains.length() > 0) {
-                        val dRule = JSONObject()
-                        dRule.put("outboundTag", tag)
-                        dRule.put("domain", domains)
-                        rulesArray.put(dRule)
-                    }
-                    if (ips.length() > 0) {
-                        val ipRule = JSONObject()
-                        ipRule.put("outboundTag", tag)
-                        ipRule.put("ip", ips)
-                        rulesArray.put(ipRule)
-                    }
-                    for (pnRule in portNetRules) {
-                        rulesArray.put(pnRule)
+                    if (domains.length() > 0) rule.put("domain", domains)
+                    if (ips.length() > 0) rule.put("ip", ips)
+                    if (ports.length() > 0) rule.put("port", ports)
+                    if (networks.length() > 0) rule.put("network", networks)
+
+                    if (domains.length() > 0 || ips.length() > 0 || ports.length() > 0 || networks.length() > 0) {
+                        rulesArray.put(rule)
                     }
                 }
 

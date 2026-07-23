@@ -668,11 +668,12 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 
 			route := rb.router.RouteWithNetwork(dstAddr, "udp")
 
-			// Local DNS logic: intercept DNS queries to route them based on the queried domain
+			// DNS Logic: Sniff queries to apply domain-based routing
 			if strings.HasSuffix(dstAddr, ":53") {
 				if domain, _, err := parseDNSResponse(buf[headerLen:n]); err == nil && domain != "" {
 					domainRoute := rb.router.RouteWithNetwork(domain, "udp")
-					rb.logFn("relay: DNS Sniff Query domain=%s route=%s", domain, domainRoute)
+					rb.logFn("relay: DNS Sniff Query domain=%s route=%s orig_dst=%s", domain, domainRoute, dstAddr)
+
 					if domainRoute == "direct" {
 						route = "direct"
 						// Redirect query to system DNS if available to bypass tunnel and censorship
@@ -681,11 +682,16 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 							if !strings.Contains(targetDNS, ":") {
 								targetDNS = targetDNS + ":53"
 							}
-							rb.logFn("relay: DNS Redirect %s -> %s for %s", dstAddr, targetDNS, domain)
-							dstAddr = targetDNS
+
+							// Safety check: avoid redirecting to loopback or unspecified addresses to prevent loops
+							host, _, _ := net.SplitHostPort(targetDNS)
+							ip := net.ParseIP(host)
+							if ip != nil && !ip.IsLoopback() && !ip.IsUnspecified() {
+								rb.logFn("relay: DNS Redirect %s -> %s for %s", dstAddr, targetDNS, domain)
+								dstAddr = targetDNS
+							}
 						}
 					} else {
-						// For proxied or blocked domains, override the DNS query route with domainRoute
 						route = domainRoute
 					}
 				}
@@ -699,19 +705,11 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 				continue
 			}
 
-			// Override dstAddr to a reliable public DNS resolver for proxied DNS queries,
-			// ensuring the remote VPS creator can resolve the domain without failing on private/local client DNS IPs.
-			if strings.HasSuffix(dstAddr, ":53") {
+			// For proxied DNS queries, ensure we use a public resolver on the remote side if the original dst is local.
+			if strings.HasSuffix(dstAddr, ":53") && route == "proxy" {
 				host, _, _ := net.SplitHostPort(dstAddr)
 				ip := net.ParseIP(host)
-				if ip != nil {
-					if ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() {
-						dstAddr = "8.8.8.8:53"
-					} else {
-						// For any proxied DNS query, default to public resolver on remote Creator
-						dstAddr = "8.8.8.8:53"
-					}
-				} else {
+				if ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast()) {
 					dstAddr = "8.8.8.8:53"
 				}
 			}
