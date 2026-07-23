@@ -123,6 +123,26 @@ var socksPort: Long
   "domainStrategy": "AsIs",
   "rules": [
     {
+      "outboundTag": "direct",
+      "domain": [
+        "domain:ir",
+        "full:bale.ai"
+      ]
+    },
+    {
+      "outboundTag": "direct",
+      "ip": [
+        "geoip:private",
+        "geoip:ir"
+      ]
+    },
+    {
+      "outboundTag": "block",
+      "domain": [
+        "geosite:category-ads-all"
+      ]
+    },
+    {
       "outboundTag": "block",
       "network": [
         "udp"
@@ -136,15 +156,15 @@ var socksPort: Long
         set(value) = prefs.edit { putString(PrefsKeys.ROUTING_CONFIG_JSON, value) }
 
     var routingMode: String
-        get() = prefs.getString(PrefsKeys.ROUTING_MODE, "CUSTOM")!!
+        get() = prefs.getString(PrefsKeys.ROUTING_MODE, "BYPASS_LAN_IRAN")!!
         set(value) = prefs.edit { putString(PrefsKeys.ROUTING_MODE, value) }
 
     var routingCustomDirect: String
-        get() = prefs.getString(PrefsKeys.ROUTING_CUSTOM_DIRECT, "")!!
+        get() = prefs.getString(PrefsKeys.ROUTING_CUSTOM_DIRECT, "domain:ir\ngeoip:private\ngeoip:ir\nfull:bale.ai")!!
         set(value) = prefs.edit { putString(PrefsKeys.ROUTING_CUSTOM_DIRECT, value) }
 
     var routingCustomBlock: String
-        get() = prefs.getString(PrefsKeys.ROUTING_CUSTOM_BLOCK, "udp:443")!!
+        get() = prefs.getString(PrefsKeys.ROUTING_CUSTOM_BLOCK, "udp:443\ngeosite:category-ads-all")!!
         set(value) = prefs.edit { putString(PrefsKeys.ROUTING_CUSTOM_BLOCK, value) }
 
     var routingCustomProxy: String

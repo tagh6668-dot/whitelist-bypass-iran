@@ -144,7 +144,7 @@ type ipMatcher struct {
 }
 
 func parseIPMatcher(s string) ([]ipMatcher, error) {
-	s = strings.TrimSpace(s)
+	s = strings.ToLower(strings.TrimSpace(s))
 	if s == "geoip:private" {
 		privateRanges := []string{
 			"127.0.0.0/8",

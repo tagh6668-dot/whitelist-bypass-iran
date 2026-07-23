@@ -584,8 +584,14 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 
 	sc := &socksConn{id: id, conn: conn, rb: rb, rdy: make(chan error, 1)}
 	rb.conns.Store(id, sc)
-	rb.logFn("relay: SOCKS CONNECT %d -> %s", id, common.MaskAddr(host))
-	rb.send(id, MsgConnect, []byte(host))
+
+	targetHost := host
+	if route == "proxy" && origIP != nil && sniffedHost != host {
+		targetHost = sniffedHost
+	}
+
+	rb.logFn("relay: SOCKS CONNECT %d -> %s", id, common.MaskAddr(targetHost))
+	rb.send(id, MsgConnect, []byte(targetHost))
 
 	if err := <-sc.rdy; err != nil {
 		rb.logFn("relay: SOCKS CONNECT %d failed: %s", id, common.MaskError(err))
@@ -691,6 +697,23 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 			if route == "direct" {
 				rb.handleDirectUDP(addr, dstAddr, buf[:headerLen], buf[headerLen:n], udpConn)
 				continue
+			}
+
+			// Override dstAddr to a reliable public DNS resolver for proxied DNS queries,
+			// ensuring the remote VPS creator can resolve the domain without failing on private/local client DNS IPs.
+			if strings.HasSuffix(dstAddr, ":53") {
+				host, _, _ := net.SplitHostPort(dstAddr)
+				ip := net.ParseIP(host)
+				if ip != nil {
+					if ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() {
+						dstAddr = "8.8.8.8:53"
+					} else {
+						// For any proxied DNS query, default to public resolver on remote Creator
+						dstAddr = "8.8.8.8:53"
+					}
+				} else {
+					dstAddr = "8.8.8.8:53"
+				}
 			}
 
 			flowKey := fmt.Sprintf("%s->%s", addr.String(), dstAddr)
