@@ -679,16 +679,19 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 						// Redirect query to system DNS if available to bypass tunnel and censorship
 						if len(rb.systemDNS) > 0 {
 							targetDNS := rb.systemDNS[0]
-							if !strings.Contains(targetDNS, ":") {
-								targetDNS = targetDNS + ":53"
+							if !strings.Contains(targetDNS, ":") || (strings.Count(targetDNS, ":") > 1 && !strings.Contains(targetDNS, "[")) {
+								// No port found (either no colon at all, or multiple colons without brackets like raw IPv6)
+								targetDNS = net.JoinHostPort(targetDNS, "53")
 							}
 
 							// Safety check: avoid redirecting to loopback or unspecified addresses to prevent loops
-							host, _, _ := net.SplitHostPort(targetDNS)
-							ip := net.ParseIP(host)
-							if ip != nil && !ip.IsLoopback() && !ip.IsUnspecified() {
-								rb.logFn("relay: DNS Redirect %s -> %s for %s", dstAddr, targetDNS, domain)
-								dstAddr = targetDNS
+							host, _, err := net.SplitHostPort(targetDNS)
+							if err == nil {
+								ip := net.ParseIP(host)
+								if ip != nil && !ip.IsLoopback() && !ip.IsUnspecified() {
+									rb.logFn("relay: DNS Redirect %s -> %s for %s", dstAddr, targetDNS, domain)
+									dstAddr = targetDNS
+								}
 							}
 						}
 					} else {
