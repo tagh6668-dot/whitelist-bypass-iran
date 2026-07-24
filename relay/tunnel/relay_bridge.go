@@ -302,8 +302,18 @@ func (rb *RelayBridge) handleJoinerMessage(connID uint32, msgType byte, payload 
 		uc := uval.(*udpClient)
 		uc.lastActive.Store(time.Now().Unix())
 
-		if strings.HasSuffix(uc.flowKey, ":53") {
-			if domain, ips, err := parseDNSResponse(payload); err == nil && domain != "" {
+		if len(payload) < 2 {
+			return
+		}
+		raddrLen := int(payload[0])
+		if raddrLen == 0 || len(payload) < 1+raddrLen {
+			return
+		}
+		raddrStr := string(payload[1 : 1+raddrLen])
+		actualPayload := payload[1+raddrLen:]
+
+		if strings.HasSuffix(raddrStr, ":53") {
+			if domain, ips, err := parseDNSResponse(actualPayload); err == nil && domain != "" {
 				for _, ip := range ips {
 					rb.dnsCache.Store(ip.String(), domain)
 					rb.logFn("relay: DNS Sniff Map %s -> %s", ip.String(), domain)
@@ -311,9 +321,14 @@ func (rb *RelayBridge) handleJoinerMessage(connID uint32, msgType byte, payload 
 			}
 		}
 
-		reply := make([]byte, len(uc.socksHdr)+len(payload))
-		copy(reply, uc.socksHdr)
-		copy(reply[len(uc.socksHdr):], payload)
+		hdr, err := BuildSocksHeader(raddrStr)
+		if err != nil {
+			return
+		}
+
+		reply := make([]byte, len(hdr)+len(actualPayload))
+		copy(reply, hdr)
+		copy(reply[len(hdr):], actualPayload)
 		uc.udpConn.WriteToUDP(reply, uc.clientAddr)
 		return
 	}
@@ -385,11 +400,11 @@ func (rb *RelayBridge) handleUDP(connID uint32, payload []byte) {
 	if val, ok := rb.udpConns.Load(connID); ok {
 		conn = val.(*net.UDPConn)
 	} else {
-		udpAddr, err := net.ResolveUDPAddr("udp", addr)
+		addrLocal, err := net.ResolveUDPAddr("udp", "0.0.0.0:0")
 		if err != nil {
 			return
 		}
-		c, err := net.DialUDP("udp", nil, udpAddr)
+		c, err := net.ListenUDP("udp", addrLocal)
 		if err != nil {
 			return
 		}
@@ -404,17 +419,27 @@ func (rb *RelayBridge) handleUDP(connID uint32, payload []byte) {
 			buf := make([]byte, common.UDPBufSize)
 			for {
 				uconn.SetReadDeadline(time.Now().Add(30 * time.Second))
-				n, err := uconn.Read(buf)
+				n, raddr, err := uconn.ReadFromUDP(buf)
 				if err != nil {
 					return
 				}
-				rb.send(id, MsgUDPReply, buf[:n])
+
+				raddrStr := raddr.String()
+				replyPayload := make([]byte, 1+len(raddrStr)+n)
+				replyPayload[0] = byte(len(raddrStr))
+				copy(replyPayload[1:], raddrStr)
+				copy(replyPayload[1+len(raddrStr):], buf[:n])
+
+				rb.send(id, MsgUDPReply, replyPayload)
 			}
 		}(connID, conn)
 	}
 
-	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	conn.Write(data)
+	resolvedDst, err := net.ResolveUDPAddr("udp", addr)
+	if err == nil {
+		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		conn.WriteToUDP(data, resolvedDst)
+	}
 }
 
 func (rb *RelayBridge) connectTCP(connID uint32, addr string) {
@@ -677,23 +702,29 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 					if domainRoute == "direct" {
 						route = "direct"
 						// Redirect query to system DNS if available to bypass tunnel and censorship
+						targetDNS := ""
 						if len(rb.systemDNS) > 0 {
-							targetDNS := rb.systemDNS[0]
-							if !strings.Contains(targetDNS, ":") || (strings.Count(targetDNS, ":") > 1 && !strings.Contains(targetDNS, "[")) {
-								// No port found (either no colon at all, or multiple colons without brackets like raw IPv6)
-								targetDNS = net.JoinHostPort(targetDNS, "53")
-							}
-
-							// Safety check: avoid redirecting to loopback or unspecified addresses to prevent loops
-							host, _, err := net.SplitHostPort(targetDNS)
-							if err == nil {
-								ip := net.ParseIP(host)
-								if ip != nil && !ip.IsLoopback() && !ip.IsUnspecified() {
-									rb.logFn("relay: DNS Redirect %s -> %s for %s", dstAddr, targetDNS, domain)
-									dstAddr = targetDNS
+							for _, sysDNS := range rb.systemDNS {
+								if !strings.Contains(sysDNS, ":") || (strings.Count(sysDNS, ":") > 1 && !strings.Contains(sysDNS, "[")) {
+									sysDNS = net.JoinHostPort(sysDNS, "53")
+								}
+								host, _, err := net.SplitHostPort(sysDNS)
+								if err == nil {
+									ip := net.ParseIP(host)
+									if ip != nil && !isLoopingDNS(ip) {
+										targetDNS = sysDNS
+										break
+									}
 								}
 							}
 						}
+						// Fallback to public DNS if no valid system DNS is found
+						if targetDNS == "" {
+							targetDNS = "1.1.1.1:53"
+						}
+
+						rb.logFn("relay: DNS Redirect %s -> %s for %s", dstAddr, targetDNS, domain)
+						dstAddr = targetDNS
 					} else {
 						route = domainRoute
 					}
@@ -717,7 +748,7 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 				}
 			}
 
-			flowKey := fmt.Sprintf("%s->%s", addr.String(), dstAddr)
+			flowKey := addr.String()
 
 			var id uint32
 			if val, ok := rb.flowToID.Load(flowKey); ok {
@@ -753,25 +784,22 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 }
 
 func (rb *RelayBridge) handleDirectUDP(clientAddr *net.UDPAddr, dstAddr string, socksHdr []byte, data []byte, udpConn *net.UDPConn) {
-	flowKey := fmt.Sprintf("direct:%s->%s", clientAddr.String(), dstAddr)
+	flowKey := fmt.Sprintf("direct:%s", clientAddr.String())
 
 	var conn *net.UDPConn
 	if val, ok := rb.directUDPConns.Load(flowKey); ok {
 		conn = val.(*net.UDPConn)
 	} else {
-		resolvedAddr, err := net.ResolveUDPAddr("udp", dstAddr)
+		addrLocal, err := net.ResolveUDPAddr("udp", "0.0.0.0:0")
 		if err != nil {
 			return
 		}
-		c, err := net.DialUDP("udp", nil, resolvedAddr)
+		c, err := net.ListenUDP("udp", addrLocal)
 		if err != nil {
 			return
 		}
 		conn = c
 		rb.directUDPConns.Store(flowKey, conn)
-
-		hdrCopy := make([]byte, len(socksHdr))
-		copy(hdrCopy, socksHdr)
 
 		go func() {
 			defer func() {
@@ -781,12 +809,13 @@ func (rb *RelayBridge) handleDirectUDP(clientAddr *net.UDPAddr, dstAddr string, 
 			buf := make([]byte, common.UDPBufSize)
 			for {
 				conn.SetReadDeadline(time.Now().Add(30 * time.Second))
-				n, err := conn.Read(buf)
+				n, raddr, err := conn.ReadFromUDP(buf)
 				if err != nil {
 					return
 				}
 
-				if strings.HasSuffix(dstAddr, ":53") {
+				raddrStr := raddr.String()
+				if strings.HasSuffix(raddrStr, ":53") {
 					if domain, ips, err := parseDNSResponse(buf[:n]); err == nil && domain != "" {
 						for _, ip := range ips {
 							rb.dnsCache.Store(ip.String(), domain)
@@ -795,14 +824,126 @@ func (rb *RelayBridge) handleDirectUDP(clientAddr *net.UDPAddr, dstAddr string, 
 					}
 				}
 
-				reply := make([]byte, len(hdrCopy)+n)
-				copy(reply, hdrCopy)
-				copy(reply[len(hdrCopy):], buf[:n])
+				hdr, err := BuildSocksHeader(raddrStr)
+				if err != nil {
+					continue
+				}
+
+				reply := make([]byte, len(hdr)+n)
+				copy(reply, hdr)
+				copy(reply[len(hdr):], buf[:n])
 				udpConn.WriteToUDP(reply, clientAddr)
 			}
 		}()
 	}
 
-	conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-	conn.Write(data)
+	resolvedDst, err := net.ResolveUDPAddr("udp", dstAddr)
+	if err == nil {
+		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+		conn.WriteToUDP(data, resolvedDst)
+	}
+}
+
+// isLoopingDNS checks if a DNS IP is loopback, unspecified, link-local, or is a local interface IP of the device
+// (or belongs to a TUN/VPN subnet) to prevent infinite DNS redirection loops.
+func isLoopingDNS(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+
+	// Direct loopback subnet check
+	if ip4 := ip.To4(); ip4 != nil {
+		if ip4[0] == 127 {
+			return true
+		}
+	}
+
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+
+	for _, iface := range interfaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+
+		isTun := false
+		nameLower := strings.ToLower(iface.Name)
+		if strings.Contains(nameLower, "tun") || strings.Contains(nameLower, "vpn") || strings.Contains(nameLower, "tap") || strings.Contains(nameLower, "ppp") {
+			isTun = true
+		}
+
+		for _, addr := range addrs {
+			var localIP net.IP
+			var ipNet *net.IPNet
+			switch v := addr.(type) {
+			case *net.IPNet:
+				localIP = v.IP
+				ipNet = v
+			case *net.IPAddr:
+				localIP = v.IP
+			}
+
+			if localIP != nil {
+				if localIP.Equal(ip) {
+					return true
+				}
+				if isTun && ipNet != nil && ipNet.Contains(ip) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// BuildSocksHeader constructs a standard SOCKS5 UDP header for the given address.
+func BuildSocksHeader(addrStr string) ([]byte, error) {
+	host, portStr, err := net.SplitHostPort(addrStr)
+	if err != nil {
+		return nil, err
+	}
+	var port uint16
+	fmt.Sscanf(portStr, "%d", &port)
+
+	if ip := net.ParseIP(host); ip != nil {
+		if ip4 := ip.To4(); ip4 != nil {
+			hdr := make([]byte, 10)
+			hdr[0] = 0x00 // RSV
+			hdr[1] = 0x00 // RSV
+			hdr[2] = 0x00 // FRAG
+			hdr[3] = 0x01 // ATYP: IPv4
+			copy(hdr[4:8], ip4)
+			binary.BigEndian.PutUint16(hdr[8:10], port)
+			return hdr, nil
+		} else {
+			hdr := make([]byte, 22)
+			hdr[0] = 0x00 // RSV
+			hdr[1] = 0x00 // RSV
+			hdr[2] = 0x00 // FRAG
+			hdr[3] = 0x04 // ATYP: IPv6
+			copy(hdr[4:20], ip)
+			binary.BigEndian.PutUint16(hdr[20:22], port)
+			return hdr, nil
+		}
+	}
+
+	dlen := len(host)
+	if dlen > 255 {
+		return nil, fmt.Errorf("domain too long")
+	}
+	hdr := make([]byte, 4+1+dlen+2)
+	hdr[0] = 0x00 // RSV
+	hdr[1] = 0x00 // RSV
+	hdr[2] = 0x00 // FRAG
+	hdr[3] = 0x03 // ATYP: Domain
+	hdr[4] = byte(dlen)
+	copy(hdr[5:5+dlen], host)
+	binary.BigEndian.PutUint16(hdr[5+dlen:7+dlen], port)
+	return hdr, nil
 }
