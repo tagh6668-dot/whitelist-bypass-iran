@@ -4,7 +4,6 @@ package tunnel
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -697,25 +696,8 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 
 			route := rb.router.RouteWithNetwork(dstAddr, "udp")
 
-			// DNS Logic: Use DoH (DNS-over-HTTPS) for encrypted, poison-free DNS resolution
+			// DNS Logic: Sniff queries to apply domain-based routing
 			if strings.HasSuffix(dstAddr, ":53") {
-				if dohResp, err := rb.dohResolver.Resolve(context.Background(), buf[headerLen:n]); err == nil && len(dohResp) >= 12 {
-					if domain, ips, err := parseDNSResponse(dohResp); err == nil && domain != "" {
-						for _, ip := range ips {
-							rb.dnsCache.Store(ip.String(), domain)
-							rb.logFn("relay: DoH Hijack Map %s -> %s", ip.String(), domain)
-						}
-					}
-					hdr, err := BuildSocksHeader(dstAddr)
-					if err == nil {
-						reply := make([]byte, len(hdr)+len(dohResp))
-						copy(reply, hdr)
-						copy(reply[len(hdr):], dohResp)
-						udpConn.WriteToUDP(reply, addr)
-					}
-					continue
-				}
-
 				if domain, _, err := parseDNSResponse(buf[headerLen:n]); err == nil && domain != "" {
 					domainRoute := rb.router.RouteWithNetwork(domain, "udp")
 					rb.logFn("relay: DNS Sniff Query domain=%s route=%s orig_dst=%s", domain, domainRoute, dstAddr)
@@ -754,18 +736,7 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 
 			if route == "block" {
 				if strings.HasSuffix(dstAddr, ":443") {
-					srcHost, _, _ := net.SplitHostPort(dstAddr)
-					srcIP := net.ParseIP(srcHost)
-					if srcIP == nil {
-						srcIP = net.IP{142, 250, 1, 1}
-					}
-					icmpPkt := BuildICMPPortUnreachable(srcIP, addr.IP, buf[headerLen:n])
-					hdr, err := BuildSocksHeader(dstAddr)
-					if err == nil {
-						reply := append(hdr, icmpPkt...)
-						udpConn.WriteToUDP(reply, addr)
-					}
-					rb.logFn("relay: QUIC fast reject %s -> ICMP Port Unreachable sent", dstAddr)
+					rb.logFn("relay: QUIC fast reject %s", dstAddr)
 				}
 				continue
 			}
