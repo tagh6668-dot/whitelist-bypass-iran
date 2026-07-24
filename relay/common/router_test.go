@@ -153,3 +153,41 @@ func TestRouterGeoIPIR(t *testing.T) {
 	}
 }
 
+func TestRouterCaseInsensitivityAndANDLogic(t *testing.T) {
+	configJSON := `{
+		"rules": [
+			{
+				"outboundTag": "direct",
+				"domain": ["YouTube.Com"],
+				"port": ["443"]
+			}
+		]
+	}`
+
+	tmpFile, err := os.CreateTemp("", "routing_config_*.json")
+	if err != nil {
+		t.Fatalf("failed to create temp file: %v", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write([]byte(configJSON)); err != nil {
+		t.Fatalf("failed to write config: %v", err)
+	}
+	tmpFile.Close()
+
+	r := NewRouter(nil)
+	if err := r.LoadConfig(tmpFile.Name()); err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	// Case insensitive test on domain + port AND logic
+	if got := r.RouteWithNetwork("WWW.YOUTUBE.COM:443", "tcp"); got != "direct" {
+		t.Errorf("expected direct for WWW.YOUTUBE.COM:443, got %q", got)
+	}
+
+	// Same domain but different port (80 vs 443) -> must NOT match rule (AND logic enforces port 443)
+	if got := r.RouteWithNetwork("WWW.YOUTUBE.COM:80", "tcp"); got != "proxy" {
+		t.Errorf("expected proxy for WWW.YOUTUBE.COM:80 (AND condition port 443 fail), got %q", got)
+	}
+}
+

@@ -387,17 +387,7 @@ func (r *Router) LoadConfig(configPath string) error {
 			hasUDP443BlockRule = true
 		}
 
-		if len(cRule.domainMatchers) > 0 && len(cRule.ipMatchers) > 0 {
-			domainRule := cRule
-			domainRule.ipMatchers = nil
-			compiled = append(compiled, domainRule)
-
-			ipRule := cRule
-			ipRule.domainMatchers = nil
-			compiled = append(compiled, ipRule)
-		} else {
-			compiled = append(compiled, cRule)
-		}
+		compiled = append(compiled, cRule)
 	}
 
 	if !hasUDP443BlockRule {
@@ -423,8 +413,7 @@ func (r *Router) RouteWithNetwork(hostPort string, network string) string {
 		portStr = ""
 	}
 
-	host = strings.TrimPrefix(host, "[")
-	host = strings.TrimSuffix(host, "]")
+	host = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")))
 
 	port, _ := strconv.Atoi(portStr)
 	network = strings.ToLower(strings.TrimSpace(network))
@@ -467,34 +456,40 @@ func (r *Router) RouteWithNetwork(hostPort string, network string) string {
 		// 3. Check domain condition
 		if len(rule.domainMatchers) > 0 {
 			if isIP {
-				continue
-			}
-			domainMatch := false
-			for _, dm := range rule.domainMatchers {
-				if dm.Match(host) {
-					domainMatch = true
-					break
+				if len(rule.ipMatchers) == 0 {
+					continue
 				}
-			}
-			if !domainMatch {
-				continue
+			} else {
+				domainMatch := false
+				for _, dm := range rule.domainMatchers {
+					if dm.Match(host) {
+						domainMatch = true
+						break
+					}
+				}
+				if !domainMatch {
+					continue
+				}
 			}
 		}
 
 		// 4. Check IP condition
 		if len(rule.ipMatchers) > 0 {
 			if !isIP {
-				continue
-			}
-			ipMatch := false
-			for _, im := range rule.ipMatchers {
-				if im.Match(ip) {
-					ipMatch = true
-					break
+				if len(rule.domainMatchers) == 0 {
+					continue
 				}
-			}
-			if !ipMatch {
-				continue
+			} else {
+				ipMatch := false
+				for _, im := range rule.ipMatchers {
+					if im.Match(ip) {
+						ipMatch = true
+						break
+					}
+				}
+				if !ipMatch {
+					continue
+				}
 			}
 		}
 

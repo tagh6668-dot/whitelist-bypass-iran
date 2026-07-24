@@ -17,8 +17,8 @@ func parseDNSResponse(data []byte) (string, []net.IP, error) {
 	if len(msg.Questions) == 0 {
 		return "", nil, fmt.Errorf("no questions")
 	}
-	// Extract domain name (e.g., "google.com")
-	domain := strings.ToLower(strings.TrimSuffix(msg.Questions[0].Name.String(), "."))
+	// Extract domain name (e.g., "google.com") and convert to lowercase
+	domain := strings.ToLower(strings.TrimSpace(strings.TrimSuffix(msg.Questions[0].Name.String(), ".")))
 	var ips []net.IP
 	for _, ans := range msg.Answers {
 		switch body := ans.Body.(type) {

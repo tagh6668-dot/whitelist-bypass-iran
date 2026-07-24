@@ -850,51 +850,76 @@ func isLoopingDNS(ip net.IP) bool {
 	if ip == nil {
 		return true
 	}
-	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
 		return true
 	}
 
-	// Direct loopback subnet check
+	// Direct loopback subnet check (127.0.0.0/8)
 	if ip4 := ip.To4(); ip4 != nil {
 		if ip4[0] == 127 {
 			return true
 		}
+		// Explicitly check for our own VPN address (10.0.0.2) and the 10.0.0.0/24 subnet to prevent loops.
+		// Also, some typical local/VPN interfaces use 10.0.2.15 (VirtualBox), 10.0.0.1 (VPN Gateway), etc.
+		if ip4[0] == 10 && ip4[1] == 0 && ip4[2] == 0 {
+			return true
+		}
+	}
+
+	// Use net.InterfaceAddrs() as a robust way to get unicast addresses which is more likely
+	// to work on Android/Termux where listing full interfaces can be restricted.
+	if addrs, err := net.InterfaceAddrs(); err == nil {
+		for _, addr := range addrs {
+			if ipNet, ok := addr.(*net.IPNet); ok {
+				if ipNet.IP.Equal(ip) {
+					return true
+				}
+				// If the IP is within any local interface subnet and the subnet belongs to a VPN
+				if ipNet.Contains(ip) {
+					if ipNet.IP.To4() != nil {
+						v4 := ipNet.IP.To4()
+						// Check common VPN subnets (e.g. 10.0.0.0/24 or 172.19.0.0/16 etc.)
+						if (v4[0] == 10 && v4[1] == 0 && v4[2] == 0) || (v4[0] == 172 && v4[1] == 19) {
+							return true
+						}
+					}
+				}
+			}
+		}
 	}
 
 	interfaces, err := net.Interfaces()
-	if err != nil {
-		return false
-	}
-
-	for _, iface := range interfaces {
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-
-		isTun := false
-		nameLower := strings.ToLower(iface.Name)
-		if strings.Contains(nameLower, "tun") || strings.Contains(nameLower, "vpn") || strings.Contains(nameLower, "tap") || strings.Contains(nameLower, "ppp") {
-			isTun = true
-		}
-
-		for _, addr := range addrs {
-			var localIP net.IP
-			var ipNet *net.IPNet
-			switch v := addr.(type) {
-			case *net.IPNet:
-				localIP = v.IP
-				ipNet = v
-			case *net.IPAddr:
-				localIP = v.IP
+	if err == nil {
+		for _, iface := range interfaces {
+			addrs, err := iface.Addrs()
+			if err != nil {
+				continue
 			}
 
-			if localIP != nil {
-				if localIP.Equal(ip) {
-					return true
+			isTun := false
+			nameLower := strings.ToLower(iface.Name)
+			if strings.Contains(nameLower, "tun") || strings.Contains(nameLower, "vpn") || strings.Contains(nameLower, "tap") || strings.Contains(nameLower, "ppp") {
+				isTun = true
+			}
+
+			for _, addr := range addrs {
+				var localIP net.IP
+				var ipNet *net.IPNet
+				switch v := addr.(type) {
+				case *net.IPNet:
+					localIP = v.IP
+					ipNet = v
+				case *net.IPAddr:
+					localIP = v.IP
 				}
-				if isTun && ipNet != nil && ipNet.Contains(ip) {
-					return true
+
+				if localIP != nil {
+					if localIP.Equal(ip) {
+						return true
+					}
+					if isTun && ipNet != nil && ipNet.Contains(ip) {
+						return true
+					}
 				}
 			}
 		}

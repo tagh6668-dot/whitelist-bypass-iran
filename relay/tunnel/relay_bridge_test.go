@@ -120,3 +120,37 @@ func TestRelayBridgeUDPPersistence(t *testing.T) {
 		t.Fatalf("swept flow should be deleted from flowToID")
 	}
 }
+
+func TestIsLoopingDNS(t *testing.T) {
+	loopingIPs := []string{
+		"127.0.0.1",
+		"127.0.0.53",
+		"10.0.0.1",
+		"10.0.0.2",
+		"192.168.1.1",
+		"172.16.0.1",
+		"0.0.0.0",
+		"::1",
+	}
+
+	for _, ipStr := range loopingIPs {
+		ip := net.ParseIP(ipStr)
+		if !isLoopingDNS(ip) {
+			t.Errorf("expected isLoopingDNS(%s) = true, got false", ipStr)
+		}
+	}
+
+	safePublicIPs := []string{
+		"1.1.1.1",
+		"8.8.8.8",
+		"9.9.9.9",
+		"1.0.0.1",
+	}
+
+	for _, ipStr := range safePublicIPs {
+		ip := net.ParseIP(ipStr)
+		if isLoopingDNS(ip) {
+			t.Errorf("expected isLoopingDNS(%s) = false, got true", ipStr)
+		}
+	}
+}
