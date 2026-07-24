@@ -67,6 +67,7 @@ jobs:
 
       - name: Build Headless Creator for Ubuntu
         run: |
+          go -C headless/bale mod tidy
           go -C headless/bale build -trimpath -ldflags="-s -w" -o headless-bale-creator-linux-x64 .
 
       - name: Prepare Release Artifacts
