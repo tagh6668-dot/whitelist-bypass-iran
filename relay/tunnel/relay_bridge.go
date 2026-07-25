@@ -814,6 +814,12 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 						rb.send(id, MsgUDP, payload)
 						return
 					}
+					if domain, ips, err := parseDNSResponse(resp); err == nil && domain != "" {
+						for _, ip := range ips {
+							rb.dnsCache.Store(ip.String(), domain)
+							rb.logFn("relay: DNS Sniff Map (DoH) %s -> %s", ip.String(), domain)
+						}
+					}
 					hdr := socksHdr
 					if len(hdr) == 0 {
 						var err error
