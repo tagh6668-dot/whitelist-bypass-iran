@@ -167,9 +167,8 @@ class SettingsDialogFragment : DialogFragment() {
     }
 
     private fun updateVp8PacingEnabled(textView: TextView) {
-        val enabled = Prefs.tunnelMode == TunnelMode.VIDEO
-        textView.isEnabled = enabled
-        textView.alpha = if (enabled) 1.0f else 0.4f
+        textView.isEnabled = true
+        textView.alpha = 1.0f
     }
 
     private fun showTunnelModeDialog(tunnelModeItem: TextView, vp8PacingItem: TextView) {

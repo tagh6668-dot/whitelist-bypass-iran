@@ -46,8 +46,8 @@
     <string name="proxy_copy">Copy proxy URL</string>
     <string name="proxy_copied">Copied to clipboard</string>
     <string name="proxy_only_label">Proxy only (no VPN)</string>
-    <string name="menu_vp8_pacing">VP8 pacing</string>
-    <string name="vp8_pacing_title">VP8 pacing</string>
+    <string name="menu_vp8_pacing">MTU &amp; Pacing</string>
+    <string name="vp8_pacing_title">MTU &amp; Pacing Settings</string>
     <string name="vp8_fps_label">FPS</string>
     <string name="vp8_fps_hint">e.g. 24</string>
     <string name="vp8_batch_label">Batch</string>
