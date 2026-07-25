@@ -4,6 +4,7 @@ package tunnel
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -138,7 +139,7 @@ func (rb *RelayBridge) udpCleanupWorker() {
 }
 
 func (rb *RelayBridge) batchWorker() {
-	const maxBatchSize = 1250
+	const maxBatchSize = 1000
 	const flushInterval = 4 * time.Millisecond
 	buf := make([]byte, 0, maxBatchSize+256)
 
@@ -597,6 +598,11 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 	}
 
 	route := rb.router.RouteWithNetwork(sniffedHost, "tcp")
+	if ip := net.ParseIP(hostOnly); ip != nil {
+		if ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() {
+			route = "direct"
+		}
+	}
 	id := rb.nextID.Add(1)
 
 	if route == "block" {
@@ -755,6 +761,13 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 				}
 			}
 
+			dstHost, _, _ := net.SplitHostPort(dstAddr)
+			if ip := net.ParseIP(dstHost); ip != nil {
+				if ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() {
+					route = "direct"
+				}
+			}
+
 			if route == "block" {
 				if strings.HasSuffix(dstAddr, ":443") {
 					rb.logFn("relay: QUIC fast reject %s", dstAddr)
@@ -781,13 +794,40 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 				continue
 			}
 
-			// For proxied DNS queries, ensure we use a public resolver on the remote side if the original dst is local.
+			// For proxied DNS queries, hijack them locally using DNS-over-HTTPS (DoH) for maximum reliability and to prevent packet drops over the lossy video tunnel.
 			if strings.HasSuffix(dstAddr, ":53") && route == "proxy" {
-				host, _, _ := net.SplitHostPort(dstAddr)
-				ip := net.ParseIP(host)
-				if ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast()) {
-					dstAddr = "8.8.8.8:53"
-				}
+				dnsReq := make([]byte, n-headerLen)
+				copy(dnsReq, buf[headerLen:n])
+				rb.logFn("relay: DNS Hijack via DoH for %s", dstAddr)
+				go func(clientAddr *net.UDPAddr, socksHdr []byte, req []byte, uConn *net.UDPConn, target string) {
+					ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+					defer cancel()
+					resp, err := rb.dohResolver.Resolve(ctx, req)
+					if err != nil {
+						rb.logFn("relay: DNS Hijack DoH error: %v (falling back to proxy UDP)", err)
+						// Fallback: send via normal proxied UDP tunnel
+						id := rb.nextID.Add(1)
+						payload := make([]byte, len(target)+1+len(req))
+						payload[0] = byte(len(target))
+						copy(payload[1:], target)
+						copy(payload[1+len(target):], req)
+						rb.send(id, MsgUDP, payload)
+						return
+					}
+					hdr := socksHdr
+					if len(hdr) == 0 {
+						var err error
+						hdr, err = BuildSocksHeader(target)
+						if err != nil {
+							return
+						}
+					}
+					reply := make([]byte, len(hdr)+len(resp))
+					copy(reply, hdr)
+					copy(reply[len(hdr):], resp)
+					uConn.WriteToUDP(reply, clientAddr)
+				}(addr, append([]byte(nil), buf[:headerLen]...), dnsReq, udpConn, dstAddr)
+				continue
 			}
 
 			flowKey := addr.String()
