@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 
+	"whitelist-bypass-iran/relay/androidbind"
 	"whitelist-bypass-iran/relay/common"
 	"whitelist-bypass-iran/relay/pion/android"
 	"whitelist-bypass-iran/relay/tunnel"
@@ -27,6 +28,9 @@ func main() {
 
 	startJoinerBridge := func(tun tunnel.DataTunnel, readBuf int) {
 		rb := tunnel.NewRelayBridgeWithAuth(tun, "joiner", readBuf, log.Printf, *socksUser, *socksPass)
+		rb.SetTunWriter(func(pkt []byte) {
+			_ = androidbind.WriteTunPacket(pkt)
+		})
 		if *systemDNS != "" {
 			rb.SetSystemDNS(*systemDNS)
 		}

@@ -16,12 +16,12 @@ func TestRouterDefaults(t *testing.T) {
 		t.Errorf("expected proxy for .ir, got %q", res)
 	}
 
-	// UDP on port 443 must be blocked by default
-	if res := r.RouteWithNetwork("google.com:443", "udp"); res != "block" {
-		t.Errorf("expected block for UDP 443, got %q", res)
+	// UDP on port 443 should default to proxy when no routing config is loaded
+	if res := r.RouteWithNetwork("google.com:443", "udp"); res != "proxy" {
+		t.Errorf("expected proxy for UDP 443, got %q", res)
 	}
-	if res := r.RouteWithNetwork("1.2.3.4:443", "udp"); res != "block" {
-		t.Errorf("expected block for UDP 443, got %q", res)
+	if res := r.RouteWithNetwork("1.2.3.4:443", "udp"); res != "proxy" {
+		t.Errorf("expected proxy for UDP 443, got %q", res)
 	}
 
 	// TCP on port 443 should default to proxy

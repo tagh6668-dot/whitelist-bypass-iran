@@ -55,6 +55,7 @@ type RelayBridge struct {
 	dnsCache sync.Map // IP (string) -> Domain (string)
 
 	systemDNS []string
+	tunWriter func([]byte)
 
 	sendCount atomic.Uint32
 	recvCount atomic.Uint32
@@ -107,6 +108,10 @@ func (rb *RelayBridge) SetSystemDNS(dnsStr string) {
 	}
 	rb.systemDNS = strings.Split(dnsStr, ",")
 	rb.logFn("relay: system DNS servers loaded: %v", rb.systemDNS)
+}
+
+func (rb *RelayBridge) SetTunWriter(fn func([]byte)) {
+	rb.tunWriter = fn
 }
 
 func (rb *RelayBridge) udpCleanupWorker() {
@@ -634,9 +639,6 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 	rb.conns.Store(id, sc)
 
 	targetHost := host
-	if route == "proxy" && origIP != nil && sniffedHost != host {
-		targetHost = sniffedHost
-	}
 
 	rb.logFn("relay: SOCKS CONNECT %d -> %s", id, common.MaskAddr(targetHost))
 	rb.send(id, MsgConnect, []byte(targetHost))
@@ -723,7 +725,6 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 					rb.logFn("relay: DNS Sniff Query domain=%s route=%s orig_dst=%s", domain, domainRoute, dstAddr)
 
 					if domainRoute == "direct" {
-						route = "direct"
 						// Redirect query to system DNS if available to bypass tunnel and censorship
 						targetDNS := ""
 						if len(rb.systemDNS) > 0 {
@@ -741,13 +742,14 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 								}
 							}
 						}
-						// Fallback to public DNS if no valid system DNS is found
-						if targetDNS == "" {
-							targetDNS = "1.1.1.1:53"
+						if targetDNS != "" {
+							route = "direct"
+							rb.logFn("relay: DNS Redirect %s -> %s for %s", dstAddr, targetDNS, domain)
+							dstAddr = targetDNS
+						} else {
+							route = "proxy"
+							rb.logFn("relay: Direct DNS fallback to proxy for %s (no valid system DNS)", domain)
 						}
-
-						rb.logFn("relay: DNS Redirect %s -> %s for %s", dstAddr, targetDNS, domain)
-						dstAddr = targetDNS
 					} else {
 						route = domainRoute
 					}
@@ -757,6 +759,21 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 			if route == "block" {
 				if strings.HasSuffix(dstAddr, ":443") {
 					rb.logFn("relay: QUIC fast reject %s", dstAddr)
+				}
+				if rb.tunWriter != nil {
+					host, _, _ := net.SplitHostPort(dstAddr)
+					serverIP := net.ParseIP(host)
+					if serverIP == nil {
+						if domainIP, ok := rb.dnsCache.Load(host); ok {
+							serverIP = net.ParseIP(domainIP.(string))
+						}
+					}
+					if serverIP == nil {
+						serverIP = net.ParseIP("142.250.1.1")
+					}
+					clientIP := net.ParseIP("10.0.0.2")
+					icmpPkt := BuildICMPPortUnreachable(serverIP, clientIP, buf[headerLen:n])
+					rb.tunWriter(icmpPkt)
 				}
 				continue
 			}

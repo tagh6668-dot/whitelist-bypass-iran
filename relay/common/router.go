@@ -311,9 +311,7 @@ func defaultUDP443Rule() compiledRule {
 }
 
 func (r *Router) loadDefaults() {
-	r.compiledRules = []compiledRule{
-		defaultUDP443Rule(),
-	}
+	r.compiledRules = []compiledRule{}
 }
 
 func (r *Router) LoadConfig(configPath string) error {
@@ -341,7 +339,6 @@ func (r *Router) LoadConfig(configPath string) error {
 	}
 
 	var compiled []compiledRule
-	hasUDP443BlockRule := false
 
 	for _, rule := range cfg.Rules {
 		tag := strings.ToLower(rule.OutboundTag)
@@ -383,15 +380,7 @@ func (r *Router) LoadConfig(configPath string) error {
 			}
 		}
 
-		if tag == "block" && len(cRule.networks) == 1 && cRule.networks[0] == "udp" && len(cRule.portMatchers) == 1 && cRule.portMatchers[0].startPort == 443 && cRule.portMatchers[0].endPort == 443 {
-			hasUDP443BlockRule = true
-		}
-
 		compiled = append(compiled, cRule)
-	}
-
-	if !hasUDP443BlockRule {
-		compiled = append(compiled, defaultUDP443Rule())
 	}
 
 	r.compiledRules = compiled

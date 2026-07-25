@@ -15,14 +15,28 @@ import (
 var (
 	tunReady  sync.WaitGroup
 	tunOrigFd int = -1
+	tunFdMu   sync.Mutex
 )
+
+func WriteTunPacket(packet []byte) error {
+	tunFdMu.Lock()
+	fd := tunOrigFd
+	tunFdMu.Unlock()
+	if fd < 0 {
+		return fmt.Errorf("tun fd not open")
+	}
+	_, err := syscall.Write(fd, packet)
+	return err
+}
 
 func StartTun2Socks(fd, mtu, socksPort int, socksUser, socksPass string) error {
 	dupFd, err := syscall.Dup(fd)
 	if err != nil {
 		return fmt.Errorf("dup tun fd: %w", err)
 	}
+	tunFdMu.Lock()
 	tunOrigFd = fd
+	tunFdMu.Unlock()
 
 	var proxy string
 	if socksUser != "" {
@@ -48,9 +62,11 @@ func StartTun2Socks(fd, mtu, socksPort int, socksUser, socksPass string) error {
 func StopTun2Socks() {
 	tunReady.Wait()
 	engine.Stop()
+	tunFdMu.Lock()
 	if tunOrigFd >= 0 {
 		syscall.Close(tunOrigFd)
 		tunOrigFd = -1
 	}
+	tunFdMu.Unlock()
 	log.Printf("tun2socks: stopped")
 }
