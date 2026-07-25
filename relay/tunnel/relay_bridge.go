@@ -79,11 +79,11 @@ func NewRelayBridge(tunnel DataTunnel, mode string, readBuf int, logFn func(stri
 		readBuf = 32768
 	}
 	rb := &RelayBridge{
-		tunnel:    tunnel,
-		logFn:     logFn,
-		mode:      mode,
-		readBuf:   readBuf,
-		ready:     make(chan struct{}),
+		tunnel:      tunnel,
+		logFn:       logFn,
+		mode:        mode,
+		readBuf:     readBuf,
+		ready:       make(chan struct{}),
 		batchChan:   make(chan []byte, 4096),
 		router:      common.NewRouter(logFn),
 		dohResolver: NewDoHResolver(logFn),
@@ -160,6 +160,26 @@ func (rb *RelayBridge) batchWorker() {
 				flush()
 			}
 			buf = append(buf, frame...)
+
+		drain:
+			for len(buf) < maxBatchSize {
+				select {
+				case f, ok := <-rb.batchChan:
+					if !ok {
+						flush()
+						return
+					}
+					if len(buf)+len(f) > maxBatchSize {
+						flush()
+						buf = append(buf, f...)
+						break drain
+					}
+					buf = append(buf, f...)
+				default:
+					break drain
+				}
+			}
+
 			if len(buf) >= maxBatchSize {
 				flush()
 			}
