@@ -85,7 +85,7 @@ class TunnelVpnService : VpnService() {
             .setSession(Vpn.SESSION_NAME)
             .addAddress(Vpn.ADDRESS, Vpn.PREFIX_LENGTH)
             .addRoute(Vpn.ROUTE, 0)
-            .setMtu(Vpn.MTU)
+            .setMtu(Prefs.mtu)
 
         when (Prefs.dnsMode) {
             DnsMode.SYSTEM -> {
@@ -150,7 +150,7 @@ class TunnelVpnService : VpnService() {
 
         tun2socksThread = Thread {
             try {
-                Androidbind.startTun2Socks(fd.toLong(), Vpn.MTU.toLong(), Prefs.socksPort, SocksAuth.user, SocksAuth.pass)
+                Androidbind.startTun2Socks(fd.toLong(), Prefs.mtu.toLong(), Prefs.socksPort, SocksAuth.user, SocksAuth.pass)
             } catch (e: Exception) {
                 Log.e(TAG, "tun2socks error: ${e.message}")
                 isRunning = false

@@ -68,6 +68,14 @@ object Prefs {
         get() = prefs.getInt(PrefsKeys.VP8_BATCH, VP8Defaults.BATCH)
         set(value) = prefs.edit { putInt(PrefsKeys.VP8_BATCH, value) }
 
+    var vp8IdleFps: Int
+        get() = prefs.getInt(PrefsKeys.VP8_IDLE_FPS, VP8Defaults.IDLE_FPS)
+        set(value) = prefs.edit { putInt(PrefsKeys.VP8_IDLE_FPS, value) }
+
+    var mtu: Int
+        get() = prefs.getInt(PrefsKeys.MTU, Vpn.MTU)
+        set(value) = prefs.edit { putInt(PrefsKeys.MTU, value) }
+
 var socksPort: Long
         get() = prefs.getLong(PrefsKeys.SOCKS_PORT, Ports.DEFAULT_SOCKS)
         set(value) = prefs.edit { putLong(PrefsKeys.SOCKS_PORT, value) }

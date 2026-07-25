@@ -15,9 +15,13 @@ class Vp8PacingSettingsDialogFragment : DialogFragment() {
 
         val fpsInput = view.findViewById<EditText>(R.id.vp8FpsInput)
         val batchInput = view.findViewById<EditText>(R.id.vp8BatchInput)
+        val idleFpsInput = view.findViewById<EditText>(R.id.vp8IdleFpsInput)
+        val mtuInput = view.findViewById<EditText>(R.id.mtuInput)
 
         fpsInput.setText(Prefs.vp8Fps.toString())
         batchInput.setText(Prefs.vp8Batch.toString())
+        idleFpsInput.setText(Prefs.vp8IdleFps.toString())
+        mtuInput.setText(Prefs.mtu.toString())
 
         return AlertDialog.Builder(requireContext())
             .setTitle(R.string.vp8_pacing_title)
@@ -27,6 +31,10 @@ class Vp8PacingSettingsDialogFragment : DialogFragment() {
                 if (fps != null && fps in 1..240) Prefs.vp8Fps = fps
                 val batch = batchInput.text.toString().toIntOrNull()
                 if (batch != null && batch in 1..256) Prefs.vp8Batch = batch
+                val idleFps = idleFpsInput.text.toString().toIntOrNull()
+                if (idleFps != null && idleFps in 1..240) Prefs.vp8IdleFps = idleFps
+                val mtuValue = mtuInput.text.toString().toIntOrNull()
+                if (mtuValue != null && mtuValue in 576..1500) Prefs.mtu = mtuValue
             }
             .setNegativeButton(android.R.string.cancel, null)
             .create()

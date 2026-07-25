@@ -52,6 +52,7 @@ func (j *BaleHeadlessJoiner) RunWithParams(jsonParams string) {
 		Resources   string `json:"resources"`
 		VP8FPS      int    `json:"vp8Fps"`
 		VP8Batch    int    `json:"vp8Batch"`
+		VP8IdleFPS  int    `json:"vp8IdleFps"`
 		TunnelMode  string `json:"tunnelMode"`
 	}
 	if err := json.Unmarshal([]byte(jsonParams), &params); err != nil {
@@ -72,6 +73,9 @@ func (j *BaleHeadlessJoiner) RunWithParams(jsonParams string) {
 	}
 	if params.VP8Batch == 0 {
 		params.VP8Batch = 30
+	}
+	if params.VP8IdleFPS == 0 {
+		params.VP8IdleFPS = 1
 	}
 	switch params.TunnelMode {
 	case "", bale.ModeVP8:
@@ -234,6 +238,7 @@ func (j *BaleHeadlessJoiner) RunWithParams(jsonParams string) {
 			LogFn:          j.logFn,
 			VP8FPS:         params.VP8FPS,
 			VP8Batch:       params.VP8Batch,
+			VP8IdleFPS:     params.VP8IdleFPS,
 			SettingEngine:  settingEngine,
 			NetDialContext: dialCtx,
 			ResolveICEHost: j.ResolveFn,

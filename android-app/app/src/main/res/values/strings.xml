@@ -53,6 +53,10 @@
     <string name="vp8_batch_label">Batch</string>
     <string name="vp8_batch_hint">e.g. 1, 8, 30</string>
     <string name="menu_dns_settings">DNS settings</string>
+    <string name="vp8_idle_fps_label">Idle FPS</string>
+    <string name="vp8_idle_fps_hint">e.g. 1 (lower saves data, higher prevents CGNAT timeouts)</string>
+    <string name="mtu_label">MTU</string>
+    <string name="mtu_hint">e.g. 1380 or 1500 (lower avoids fragmentation/SSL MAC errors)</string>
     <string name="dns_settings_title">DNS</string>
     <string name="dns_mode_label">DNS mode</string>
     <string name="dns_mode_system">System</string>

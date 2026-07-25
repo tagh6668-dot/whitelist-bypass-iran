@@ -45,6 +45,8 @@ object PrefsKeys {
     const val DISPLAY_NAME = "display_name"
     const val VP8_FPS = "vp8_fps"
     const val VP8_BATCH = "vp8_batch"
+    const val VP8_IDLE_FPS = "vp8_idle_fps"
+    const val MTU = "mtu"
     const val SOCKS_PORT = "socks_port"
     const val SOCKS_AUTH_MODE = "socks_auth_mode"
     const val SOCKS_USER = "socks_user"
@@ -64,6 +66,7 @@ object PrefsKeys {
 object VP8Defaults {
     const val FPS = 24
     const val BATCH = 30
+    const val IDLE_FPS = 1
 }
 
 object Vpn {

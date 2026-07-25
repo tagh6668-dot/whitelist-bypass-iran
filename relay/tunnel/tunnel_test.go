@@ -228,7 +228,7 @@ func TestVP8DataTunnelAdaptivePacing(t *testing.T) {
 	}
 
 	vt := NewVP8DataTunnel(track, obf, func(s string, a ...any) {})
-	vt.Start(24, 30)
+	vt.Start(24, 30, 1)
 	defer vt.Stop()
 
 	// Initially, it should not be idle

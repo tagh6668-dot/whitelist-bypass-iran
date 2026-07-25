@@ -35,6 +35,7 @@ type SessionConfig struct {
 	LogFn          func(string, ...any)
 	VP8FPS         int
 	VP8Batch       int
+	VP8IdleFPS     int
 	SettingEngine  *webrtc.SettingEngine
 	NetDialContext func(ctx context.Context, network, addr string) (net.Conn, error)
 	ResolveICEHost func(host string) (string, error)
@@ -208,7 +209,7 @@ func (s *Session) onPubConnected() {
 		return
 	}
 	s.vp8tun = tunnel.NewVP8DataTunnel(track, s.cfg.Obfuscator, s.cfg.LogFn)
-	s.vp8tun.Start(s.cfg.VP8FPS, s.cfg.VP8Batch)
+	s.vp8tun.Start(s.cfg.VP8FPS, s.cfg.VP8Batch, s.cfg.VP8IdleFPS)
 	s.vp8Selected = tunnel.NewSequencedTunnel(s.vp8tun, tunnel.DefaultSeqWindow)
 	s.mu.Unlock()
 	s.cfg.LogFn("[lk] vp8 tunnel writer started")

@@ -30,6 +30,7 @@ type VP8DataTunnel struct {
 	cfgMu sync.Mutex
 	fps   int
 	batch int
+	idleFps int
 
 	sentFrames atomic.Uint64
 	recvFrames atomic.Uint64
@@ -56,6 +57,7 @@ func NewVP8DataTunnel(track *webrtc.TrackLocalStaticSample, obf *TunnelObfuscato
 		scaleUpChan: make(chan struct{}, 1),
 		fps:         defaultVP8FPS,
 		batch:       defaultVP8Batch,
+		idleFps:     1,
 	}
 }
 
@@ -97,6 +99,12 @@ func (t *VP8DataTunnel) Batch() int {
 	return t.batch
 }
 
+func (t *VP8DataTunnel) IdleFPS() int {
+	t.cfgMu.Lock()
+	defer t.cfgMu.Unlock()
+	return t.idleFps
+}
+
 func (t *VP8DataTunnel) SendData(data []byte) {
 	if len(data) == 0 {
 		return
@@ -114,13 +122,16 @@ func (t *VP8DataTunnel) SendData(data []byte) {
 	}
 }
 
-func (t *VP8DataTunnel) Start(fps, batch int) {
+func (t *VP8DataTunnel) Start(fps, batch, idleFps int) {
 	t.cfgMu.Lock()
 	if fps > 0 {
 		t.fps = fps
 	}
 	if batch > 0 {
 		t.batch = batch
+	}
+	if idleFps > 0 {
+		t.idleFps = idleFps
 	}
 	t.cfgMu.Unlock()
 	if !t.running.CompareAndSwap(false, true) {
@@ -147,7 +158,7 @@ func (t *VP8DataTunnel) writerLoop() {
 
 		var currentFPS, currentBatch int
 		if isCurrentlyIdle {
-			currentFPS = 1
+			currentFPS = t.IdleFPS()
 			currentBatch = 1
 		} else {
 			currentFPS = t.FPS()

@@ -32,4 +32,32 @@
         android:hint="@string/vp8_batch_hint"
         android:inputType="number" />
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/vp8_idle_fps_label"
+        android:textSize="14sp" />
+
+    <EditText
+        android:id="@+id/vp8IdleFpsInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/vp8_idle_fps_hint"
+        android:inputType="number" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="@string/mtu_label"
+        android:textSize="14sp" />
+
+    <EditText
+        android:id="@+id/mtuInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="@string/mtu_hint"
+        android:inputType="number" />
+
 </LinearLayout>
