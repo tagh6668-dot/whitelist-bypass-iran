@@ -349,9 +349,13 @@ func (rb *RelayBridge) handleJoinerMessage(connID uint32, msgType byte, payload 
 			}
 		}
 
-		hdr, err := BuildSocksHeader(raddrStr)
-		if err != nil {
-			return
+		hdr := uc.socksHdr
+		if len(hdr) == 0 {
+			var err error
+			hdr, err = BuildSocksHeader(raddrStr)
+			if err != nil {
+				return
+			}
 		}
 
 		reply := make([]byte, len(hdr)+len(actualPayload))
@@ -585,9 +589,7 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 	}
 
 	sniffedHost := host
-	var origIP net.IP
 	if ip := net.ParseIP(hostOnly); ip != nil {
-		origIP = ip
 		if domain, ok := rb.dnsCache.Load(ip.String()); ok {
 			sniffedHost = domain.(string) + ":" + port
 			rb.logFn("relay: DNS Sniff %s -> %s", host, sniffedHost)
@@ -595,12 +597,6 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 	}
 
 	route := rb.router.RouteWithNetwork(sniffedHost, "tcp")
-	if route == "proxy" && origIP != nil {
-		ipRoute := rb.router.RouteWithNetwork(host, "tcp")
-		if ipRoute != "proxy" {
-			route = ipRoute
-		}
-	}
 	id := rb.nextID.Add(1)
 
 	if route == "block" {
@@ -639,6 +635,9 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 	rb.conns.Store(id, sc)
 
 	targetHost := host
+	if route == "proxy" && sniffedHost != host {
+		targetHost = sniffedHost
+	}
 
 	rb.logFn("relay: SOCKS CONNECT %d -> %s", id, common.MaskAddr(targetHost))
 	rb.send(id, MsgConnect, []byte(targetHost))
@@ -893,7 +892,7 @@ func isLoopingDNS(ip net.IP) bool {
 	if ip == nil {
 		return true
 	}
-	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
+	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 		return true
 	}
 
