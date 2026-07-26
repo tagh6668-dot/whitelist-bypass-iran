@@ -291,7 +291,13 @@ func (rb *RelayBridge) send(connID uint32, msgType byte, payload []byte) {
 			}
 		}
 	}()
-	rb.batchChan <- frame
+	select {
+	case rb.batchChan <- frame:
+	default:
+		if !rb.closed.Load() {
+			rb.tunnel.SendData(frame)
+		}
+	}
 }
 
 func (rb *RelayBridge) handleTunnelData(data []byte) {
