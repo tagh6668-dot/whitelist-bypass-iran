@@ -4,7 +4,6 @@ package tunnel
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -831,48 +830,6 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 			}
 			if route == "direct" {
 				rb.handleDirectUDP(addr, dstAddr, buf[:headerLen], buf[headerLen:n], udpConn)
-				continue
-			}
-
-			// For proxied DNS queries, hijack them locally using DNS-over-HTTPS (DoH) for maximum reliability and to prevent packet drops over the lossy video tunnel.
-			if strings.HasSuffix(dstAddr, ":53") && route == "proxy" {
-				dnsReq := make([]byte, n-headerLen)
-				copy(dnsReq, buf[headerLen:n])
-				rb.logFn("relay: DNS Hijack via DoH for %s", dstAddr)
-				go func(clientAddr *net.UDPAddr, socksHdr []byte, req []byte, uConn *net.UDPConn, target string) {
-					ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-					defer cancel()
-					resp, err := rb.dohResolver.Resolve(ctx, req)
-					if err != nil {
-						rb.logFn("relay: DNS Hijack DoH error: %v (falling back to proxy UDP)", err)
-						// Fallback: send via normal proxied UDP tunnel
-						id := rb.nextID.Add(1)
-						payload := make([]byte, len(target)+1+len(req))
-						payload[0] = byte(len(target))
-						copy(payload[1:], target)
-						copy(payload[1+len(target):], req)
-						rb.send(id, MsgUDP, payload)
-						return
-					}
-					if domain, ips, err := parseDNSResponse(resp); err == nil && domain != "" {
-						for _, ip := range ips {
-							rb.dnsCache.Store(ip.String(), domain)
-							rb.logFn("relay: DNS Sniff Map (DoH) %s -> %s", ip.String(), domain)
-						}
-					}
-					hdr := socksHdr
-					if len(hdr) == 0 {
-						var err error
-						hdr, err = BuildSocksHeader(target)
-						if err != nil {
-							return
-						}
-					}
-					reply := make([]byte, len(hdr)+len(resp))
-					copy(reply, hdr)
-					copy(reply[len(hdr):], resp)
-					uConn.WriteToUDP(reply, clientAddr)
-				}(addr, append([]byte(nil), buf[:headerLen]...), dnsReq, udpConn, dstAddr)
 				continue
 			}
 
