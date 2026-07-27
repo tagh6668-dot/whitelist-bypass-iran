@@ -286,9 +286,7 @@ func (rb *RelayBridge) send(connID uint32, msgType byte, payload []byte) {
 	}
 	defer func() {
 		if r := recover(); r != nil {
-			if !rb.closed.Load() {
-				rb.tunnel.SendData(frame)
-			}
+			// Channel was closed during shutdown, ignore cleanly
 		}
 	}()
 	select {
