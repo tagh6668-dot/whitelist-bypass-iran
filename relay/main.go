@@ -19,10 +19,15 @@ func main() {
 	socksPass := flag.String("socks-pass", "", "SOCKS5 proxy password")
 	routingConfig := flag.String("routing-config", "", "path to routing rules config JSON file (optional)")
 	systemDNS := flag.String("system-dns", "", "comma-separated list of system DNS servers (optional)")
+	localDNS := flag.Bool("local-dns", false, "enable local DNS")
+	fakeDNS := flag.Bool("fake-dns", false, "enable fake DNS")
+	remoteDNS := flag.String("remote-dns", "", "remote DNS server(s)")
+	domesticDNS := flag.String("domestic-dns", "", "domestic DNS server(s)")
+	localDNSPort := flag.String("local-dns-port", "10853", "local DNS port")
 	flag.Parse()
 
 	if *mode == "" {
-		fmt.Fprintf(os.Stderr, "Usage: relay --mode bale-headless-joiner [--socks-port N] [--socks-user U] [--socks-pass P] [--routing-config PATH] [--system-dns DNS]\n")
+		fmt.Fprintf(os.Stderr, "Usage: relay --mode bale-headless-joiner [--socks-port N] [--socks-user U] [--socks-pass P] [--routing-config PATH] [--system-dns DNS] [--local-dns] [--fake-dns]\n")
 		os.Exit(1)
 	}
 
@@ -39,6 +44,13 @@ func main() {
 				log.Printf("router: failed to load config from %s: %v", *routingConfig, err)
 			}
 		}
+		if *localDNS || *fakeDNS {
+			rb.SetLocalDNS(*localDNS, *fakeDNS)
+		}
+		_ = remoteDNS
+		_ = domesticDNS
+		_ = localDNSPort
+
 		rb.MarkReady()
 		addr := fmt.Sprintf("127.0.0.1:%d", *socksPort)
 		go func() {

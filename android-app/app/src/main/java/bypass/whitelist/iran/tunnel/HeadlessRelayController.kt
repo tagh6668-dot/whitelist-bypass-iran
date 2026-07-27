@@ -6,13 +6,13 @@ import android.util.Log
 import bypass.whitelist.iran.util.DnsMode
 import bypass.whitelist.iran.util.ParamCallback
 import bypass.whitelist.iran.util.Prefs
+import bypass.whitelist.iran.util.SettingsManager
 import bypass.whitelist.iran.util.SocksAuth
 import bypass.whitelist.iran.util.Vpn
+import org.json.JSONObject
 import java.io.BufferedWriter
 import java.io.File
 import java.io.OutputStreamWriter
-import java.net.Inet4Address
-import java.net.InetAddress
 
 class HeadlessRelayController(
     private val context: Context,
@@ -70,10 +70,37 @@ class HeadlessRelayController(
                     onLog("DNS servers passed (${Prefs.dnsMode}): ${dnsServers.joinToString(",")}")
                 }
 
+                if (Prefs.localDnsEnabled) {
+                    args.add("--local-dns")
+                    if (Prefs.fakeDnsEnabled) {
+                        args.add("--fake-dns")
+                    }
+                    args.add("--remote-dns")
+                    args.add(SettingsManager.getRemoteDnsServers().joinToString(","))
+                    args.add("--domestic-dns")
+                    args.add(SettingsManager.getDomesticDnsServers().joinToString(","))
+                    args.add("--local-dns-port")
+                    args.add(Prefs.localDnsPort)
+                    onLog("Local DNS active (Fake DNS: ${Prefs.fakeDnsEnabled}, Port: ${Prefs.localDnsPort})")
+                }
+
                 if (Prefs.routingEnabled) {
                     val routingFile = File(context.filesDir, "routing.json")
                     try {
-                        routingFile.writeText(Prefs.routingConfigJson)
+                        val routingJson = try {
+                            val obj = JSONObject(Prefs.routingConfigJson)
+                            obj.put("domainStrategy", Prefs.routingDomainStrategy)
+                            obj.put("localDnsEnabled", Prefs.localDnsEnabled)
+                            obj.put("fakeDnsEnabled", Prefs.fakeDnsEnabled)
+                            obj.put("remoteDns", Prefs.remoteDns)
+                            obj.put("domesticDns", Prefs.domesticDns)
+                            obj.put("localDnsPort", Prefs.localDnsPort)
+                            obj.toString(2)
+                        } catch (_: Exception) {
+                            Prefs.routingConfigJson
+                        }
+
+                        routingFile.writeText(routingJson)
                         args.add("--routing-config")
                         args.add(routingFile.absolutePath)
                         onLog("Routing config loaded: ${routingFile.absolutePath}")
@@ -198,125 +225,79 @@ class HeadlessRelayController(
             }
         }
 
-        try {
-            val all = InetAddress.getAllByName(hostname)
-            val address = all.firstOrNull { it is Inet4Address && !isPoisonedIp(it.hostAddress ?: "") }
-                ?: all.firstOrNull { !isPoisonedIp(it.hostAddress ?: "") }
-            val resolved = address?.hostAddress ?: ""
-            if (resolved.isNotEmpty() && !isPoisonedIp(resolved)) {
-                return resolved
-            }
-        } catch (_: Exception) {
+        return try {
+            val addrs = java.net.InetAddress.getAllByName(hostname)
+            val clean = addrs.firstOrNull { !isPoisonedIp(it.hostAddress ?: "") }
+            clean?.hostAddress ?: addrs.first().hostAddress ?: ""
+        } catch (e: Exception) {
+            ""
         }
-
-        val fallbackServers = listOf("1.1.1.1", "8.8.8.8", "1.0.0.1")
-        for (server in fallbackServers) {
-            val ip = queryDnsUdp(hostname, server)
-            if (!ip.isNullOrEmpty() && !isPoisonedIp(ip)) {
-                return ip
-            }
-        }
-
-        return ""
     }
 
-    private fun queryDnsUdp(hostname: String, dnsServerIp: String, timeoutMs: Int = 2000): String? {
-        var socket: java.net.DatagramSocket? = null
-        try {
-            socket = java.net.DatagramSocket()
-            socket.soTimeout = timeoutMs
-            val random = java.util.Random()
-            val txId = random.nextInt(65535)
+    private fun queryDnsUdp(hostname: String, dnsServer: String): String? {
+        return try {
+            val socket = java.net.DatagramSocket()
+            socket.soTimeout = 1500
 
-            val baos = java.io.ByteArrayOutputStream()
-            val dos = java.io.DataOutputStream(baos)
-
-            dos.writeShort(txId)
-            dos.writeShort(0x0100)
-            dos.writeShort(0x0001)
-            dos.writeShort(0x0000)
-            dos.writeShort(0x0000)
-            dos.writeShort(0x0000)
-
-            for (part in hostname.split(".")) {
-                val bytes = part.toByteArray(Charsets.UTF_8)
-                dos.writeByte(bytes.size)
-                dos.write(bytes)
-            }
-            dos.writeByte(0)
-            dos.writeShort(0x0001)
-            dos.writeShort(0x0001)
-
-            val queryData = baos.toByteArray()
-            val serverAddr = InetAddress.getByName(dnsServerIp)
-            val sendPacket = java.net.DatagramPacket(queryData, queryData.size, serverAddr, 53)
-            socket.send(sendPacket)
+            val query = buildDnsQueryPacket(hostname)
+            val serverAddr = java.net.InetAddress.getByName(dnsServer)
+            val packet = java.net.DatagramPacket(query, query.size, serverAddr, 53)
+            socket.send(packet)
 
             val recvBuf = ByteArray(512)
             val recvPacket = java.net.DatagramPacket(recvBuf, recvBuf.size)
             socket.receive(recvPacket)
+            socket.close()
 
-            val resp = recvPacket.data
-            if (resp.size < 12) return null
-
-            val dis = java.io.DataInputStream(java.io.ByteArrayInputStream(resp))
-            val respId = dis.readUnsignedShort()
-            if (respId != txId) return null
-
-            val flags = dis.readUnsignedShort()
-            if ((flags and 0x000F) != 0) return null
-
-            val qdCount = dis.readUnsignedShort()
-            val anCount = dis.readUnsignedShort()
-            dis.readUnsignedShort()
-            dis.readUnsignedShort()
-
-            for (i in 0 until qdCount) {
-                while (true) {
-                    val len = dis.readUnsignedByte()
-                    if (len == 0) break
-                    if (len >= 192) {
-                        dis.readByte()
-                        break
-                    }
-                    dis.skipBytes(len)
-                }
-                dis.readUnsignedShort()
-                dis.readUnsignedShort()
-            }
-
-            for (i in 0 until anCount) {
-                fun skipName() {
-                    val b = dis.readUnsignedByte()
-                    if (b >= 192) {
-                        dis.readByte()
-                    } else if (b > 0) {
-                        dis.skipBytes(b)
-                        skipName()
-                    }
-                }
-                skipName()
-
-                val type = dis.readUnsignedShort()
-                dis.readUnsignedShort()
-                dis.readInt()
-                val rdLength = dis.readUnsignedShort()
-
-                if (type == 1 && rdLength == 4) {
-                    val ipBytes = ByteArray(4)
-                    dis.readFully(ipBytes)
-                    val ipStr = InetAddress.getByAddress(ipBytes).hostAddress
-                    if (ipStr != null && !isPoisonedIp(ipStr)) {
-                        return ipStr
-                    }
-                } else {
-                    dis.skipBytes(rdLength)
-                }
-            }
+            parseDnsResponseIp(recvBuf, recvPacket.length)
         } catch (e: Exception) {
-            Log.w("RELAY", "UDP DNS query to $dnsServerIp failed for $hostname: ${e.message}")
-        } finally {
-            try { socket?.close() } catch (_: Exception) {}
+            null
+        }
+    }
+
+    private fun buildDnsQueryPacket(hostname: String): ByteArray {
+        val bos = java.io.ByteArrayOutputStream()
+        bos.write(byteArrayOf(0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00))
+        for (part in hostname.split(".")) {
+            val bytes = part.toByteArray(Charsets.US_ASCII)
+            bos.write(bytes.size)
+            bos.write(bytes)
+        }
+        bos.write(0)
+        bos.write(byteArrayOf(0x00, 0x01, 0x00, 0x01))
+        return bos.toByteArray()
+    }
+
+    private fun parseDnsResponseIp(buf: ByteArray, len: Int): String? {
+        if (len < 12) return null
+        val anCount = ((buf[6].toInt() and 0xFF) shl 8) or (buf[7].toInt() and 0xFF)
+        if (anCount == 0) return null
+
+        var pos = 12
+        while (pos < len && buf[pos].toInt() != 0) {
+            pos += (buf[pos].toInt() and 0xFF) + 1
+        }
+        pos += 5
+
+        for (i in 0 until anCount) {
+            if (pos >= len) break
+            if ((buf[pos].toInt() and 0xC0) == 0xC0) {
+                pos += 2
+            } else {
+                while (pos < len && buf[pos].toInt() != 0) {
+                    pos += (buf[pos].toInt() and 0xFF) + 1
+                }
+                pos += 1
+            }
+            if (pos + 10 > len) break
+            val qType = ((buf[pos].toInt() and 0xFF) shl 8) or (buf[pos + 1].toInt() and 0xFF)
+            val rdLen = ((buf[pos + 8].toInt() and 0xFF) shl 8) or (buf[pos + 9].toInt() and 0xFF)
+            pos += 10
+
+            if (qType == 1 && rdLen == 4 && pos + 4 <= len) {
+                return "${buf[pos].toInt() and 0xFF}.${buf[pos + 1].toInt() and 0xFF}.${buf[pos + 2].toInt() and 0xFF}.${buf[pos + 3].toInt() and 0xFF}"
+            }
+            pos += rdLen
         }
         return null
     }

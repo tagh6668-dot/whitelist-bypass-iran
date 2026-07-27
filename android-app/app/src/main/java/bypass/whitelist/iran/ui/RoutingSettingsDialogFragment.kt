@@ -13,7 +13,9 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
 import bypass.whitelist.iran.R
+import bypass.whitelist.iran.enums.RoutingType
 import bypass.whitelist.iran.util.Prefs
+import bypass.whitelist.iran.util.SettingsManager
 import com.google.android.material.tabs.TabLayout
 import org.json.JSONArray
 import org.json.JSONObject
@@ -33,7 +35,8 @@ class RoutingSettingsDialogFragment : DialogFragment {
 
         val enableCheckbox = view.findViewById<CheckBox>(R.id.routingEnableCheckbox)
         val settingsContainer = view.findViewById<LinearLayout>(R.id.routingSettingsContainer)
-        val modeSpinner = view.findViewById<Spinner>(R.id.routingModeSpinner)
+        val domainStrategySpinner = view.findViewById<Spinner>(R.id.domainStrategySpinner)
+        val presetRulesetSpinner = view.findViewById<Spinner>(R.id.presetRulesetSpinner)
         val customContainer = view.findViewById<LinearLayout>(R.id.customRulesContainer)
         val tabLayout = view.findViewById<TabLayout>(R.id.customRulesTabLayout)
         val customDirectInput = view.findViewById<EditText>(R.id.customDirectInput)
@@ -41,46 +44,59 @@ class RoutingSettingsDialogFragment : DialogFragment {
         val customProxyInput = view.findViewById<EditText>(R.id.customProxyInput)
         val hintText = view.findViewById<TextView>(R.id.customRulesHint)
 
-        // Set up the Spinner for Routing Modes
-        val modes = arrayOf("Global (Proxy All)", "Bypass LAN", "Bypass LAN & Iran", "Custom Rules")
-        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, modes)
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        modeSpinner.adapter = adapter
+        // Set up Domain Strategy Spinner
+        val strategies = resources.getStringArray(R.array.routing_domain_strategy)
+        val strategyAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, strategies)
+        strategyAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        domainStrategySpinner.adapter = strategyAdapter
 
-        // Set initial states from preferences
-        enableCheckbox.isChecked = Prefs.routingEnabled
-        
-        val initialIndex = when (Prefs.routingMode) {
-            "GLOBAL" -> 0
-            "BYPASS_LAN" -> 1
-            "BYPASS_LAN_IRAN" -> 2
-            "CUSTOM" -> 3
-            else -> 2
+        val initialStrategyIndex = strategies.indexOf(Prefs.routingDomainStrategy).let { if (it >= 0) it else 0 }
+        domainStrategySpinner.setSelection(initialStrategyIndex)
+
+        // Set up Preset Rulesets Spinner
+        val presetNames = arrayOf(
+            "Bypass LAN & Mainland (White)",
+            "Global Proxy (Black)",
+            "Global (All Proxy)",
+            "Bypass LAN & Iran (White Iran)",
+            "Bypass LAN & Russia (White Russia)",
+            "Custom Rules"
+        )
+        val presetAdapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, presetNames)
+        presetAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        presetRulesetSpinner.adapter = presetAdapter
+
+        val initialPresetIndex = when (Prefs.routingMode) {
+            "WHITE" -> 0
+            "BLACK" -> 1
+            "GLOBAL" -> 2
+            "BYPASS_LAN_IRAN", "WHITE_IRAN" -> 3
+            "WHITE_RUSSIA" -> 4
+            "CUSTOM" -> 5
+            else -> 3
         }
-        modeSpinner.setSelection(initialIndex)
+        presetRulesetSpinner.setSelection(initialPresetIndex)
 
+        enableCheckbox.isChecked = Prefs.routingEnabled
         customDirectInput.setText(Prefs.routingCustomDirect)
         customBlockedInput.setText(Prefs.routingCustomBlock)
         customProxyInput.setText(Prefs.routingCustomProxy)
 
-        // Sync container visibility with enable/disable checkbox
         fun updateContainerVisibility() {
-            val isEnabled = enableCheckbox.isChecked
-            settingsContainer.visibility = if (isEnabled) View.VISIBLE else View.GONE
+            settingsContainer.visibility = if (enableCheckbox.isChecked) View.VISIBLE else View.GONE
         }
         enableCheckbox.setOnCheckedChangeListener { _, _ -> updateContainerVisibility() }
         updateContainerVisibility()
 
-        // Sync custom rules visibility with selected mode
-        modeSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        presetRulesetSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                customContainer.visibility = if (position == 3) View.VISIBLE else View.GONE
+                customContainer.visibility = if (position == 5) View.VISIBLE else View.GONE
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
-        customContainer.visibility = if (initialIndex == 3) View.VISIBLE else View.GONE
+        customContainer.visibility = if (initialPresetIndex == 5) View.VISIBLE else View.GONE
 
-        // Set up the tabs for Custom Rules
+        // Custom rules tabs
         tabLayout.addTab(tabLayout.newTab().setText("Direct"))
         tabLayout.addTab(tabLayout.newTab().setText("Blocked"))
         tabLayout.addTab(tabLayout.newTab().setText("Proxy"))
@@ -109,22 +125,28 @@ class RoutingSettingsDialogFragment : DialogFragment {
             .setPositiveButton(android.R.string.ok) { _, _ ->
                 Prefs.routingEnabled = enableCheckbox.isChecked
 
-                val selectedMode = when (modeSpinner.selectedItemPosition) {
-                    0 -> "GLOBAL"
-                    1 -> "BYPASS_LAN"
-                    2 -> "BYPASS_LAN_IRAN"
-                    3 -> "CUSTOM"
-                    else -> "BYPASS_LAN_IRAN"
+                val selectedStrategy = strategies[domainStrategySpinner.selectedItemPosition]
+                Prefs.routingDomainStrategy = selectedStrategy
+
+                val selectedPresetIndex = presetRulesetSpinner.selectedItemPosition
+                val modeStr = when (selectedPresetIndex) {
+                    0 -> "WHITE"
+                    1 -> "BLACK"
+                    2 -> "GLOBAL"
+                    3 -> "WHITE_IRAN"
+                    4 -> "WHITE_RUSSIA"
+                    5 -> "CUSTOM"
+                    else -> "WHITE_IRAN"
                 }
-                Prefs.routingMode = selectedMode
+                Prefs.routingMode = modeStr
 
                 Prefs.routingCustomDirect = customDirectInput.text.toString()
                 Prefs.routingCustomBlock = customBlockedInput.text.toString()
                 Prefs.routingCustomProxy = customProxyInput.text.toString()
 
-                // Compile UI input into Go core's routing JSON format
                 Prefs.routingConfigJson = generateRoutingJson(
-                    selectedMode,
+                    selectedStrategy,
+                    selectedPresetIndex,
                     Prefs.routingCustomDirect,
                     Prefs.routingCustomBlock,
                     Prefs.routingCustomProxy
@@ -137,150 +159,97 @@ class RoutingSettingsDialogFragment : DialogFragment {
     }
 
     private fun generateRoutingJson(
-        mode: String,
+        strategy: String,
+        presetIndex: Int,
         customDirect: String,
         customBlock: String,
         customProxy: String
     ): String {
         val root = JSONObject()
-        root.put("domainStrategy", "AsIs")
+        root.put("domainStrategy", strategy)
 
+        if (presetIndex in 0..4) {
+            val rulesets = SettingsManager.getPresetRoutingRulesets(requireContext(), presetIndex)
+            if (rulesets != null) {
+                val rulesArray = JSONArray()
+                for (item in rulesets) {
+                    if (!item.enabled) continue
+                    val rule = JSONObject()
+                    rule.put("outboundTag", item.outboundTag)
+                    item.port?.let { p ->
+                        val pArr = JSONArray()
+                        pArr.put(p)
+                        rule.put("port", pArr)
+                    }
+                    item.network?.let { n ->
+                        val nArr = JSONArray()
+                        nArr.put(n)
+                        rule.put("network", nArr)
+                    }
+                    item.ip?.let { ips ->
+                        val ipArr = JSONArray()
+                        ips.forEach { ipArr.put(it) }
+                        rule.put("ip", ipArr)
+                    }
+                    item.domain?.let { doms ->
+                        val domArr = JSONArray()
+                        doms.forEach { domArr.put(it) }
+                        rule.put("domain", domArr)
+                    }
+                    rulesArray.put(rule)
+                }
+                root.put("rules", rulesArray)
+                return root.toString(2)
+            }
+        }
+
+        // Custom rules fallback
         val rulesArray = JSONArray()
+        fun addCustomRule(tag: String, text: String) {
+            val lines = text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+            if (lines.isEmpty()) return
+            val domains = JSONArray()
+            val ips = JSONArray()
+            val ports = JSONArray()
+            val networks = JSONArray()
+
+            for (line in lines) {
+                when {
+                    line.startsWith("udp:") -> {
+                        networks.put("udp")
+                        ports.put(line.substringAfter("udp:"))
+                    }
+                    line.startsWith("tcp:") -> {
+                        networks.put("tcp")
+                        ports.put(line.substringAfter("tcp:"))
+                    }
+                    line.startsWith("geoip:") || line.matches(Regex("""^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(/\d+)?$""")) -> ips.put(line)
+                    else -> domains.put(line)
+                }
+            }
+
+            if (domains.length() > 0 || ips.length() > 0 || ports.length() > 0) {
+                val rule = JSONObject().apply {
+                    put("outboundTag", tag)
+                    if (domains.length() > 0) put("domain", domains)
+                    if (ips.length() > 0) put("ip", ips)
+                    if (ports.length() > 0) put("port", ports)
+                    if (networks.length() > 0) put("network", networks)
+                }
+                rulesArray.put(rule)
+            }
+        }
+
+        addCustomRule("direct", customDirect)
+        addCustomRule("block", customBlock)
+        addCustomRule("proxy", customProxy)
 
         val defaultBlockRule = JSONObject().apply {
             put("outboundTag", "block")
             put("network", JSONArray().apply { put("udp") })
             put("port", JSONArray().apply { put("443") })
         }
-
-        when (mode) {
-            "GLOBAL" -> {
-                rulesArray.put(defaultBlockRule)
-            }
-            "BYPASS_LAN" -> {
-                val rule = JSONObject()
-                rule.put("outboundTag", "direct")
-                val ipArray = JSONArray()
-                ipArray.put("geoip:private")
-                rule.put("ip", ipArray)
-                rulesArray.put(rule)
-                rulesArray.put(defaultBlockRule)
-            }
-            "BYPASS_LAN_IRAN" -> {
-                // Bypass LAN and Iran Domains
-                val directDomainRule = JSONObject().apply {
-                    put("outboundTag", "direct")
-                    put("domain", JSONArray().apply {
-                        put("domain:ir")
-                        put("full:bale.ai")
-                    })
-                }
-                rulesArray.put(directDomainRule)
-
-                // Bypass LAN and Iran IPs
-                val directIpRule = JSONObject().apply {
-                    put("outboundTag", "direct")
-                    put("ip", JSONArray().apply {
-                        put("geoip:private")
-                        put("geoip:ir")
-                    })
-                }
-                rulesArray.put(directIpRule)
-
-                // Block known ad category
-                val blockRule = JSONObject().apply {
-                    put("outboundTag", "block")
-                    put("domain", JSONArray().apply { put("geosite:category-ads-all") })
-                }
-                rulesArray.put(blockRule)
-                rulesArray.put(defaultBlockRule)
-            }
-            "CUSTOM" -> {
-                fun addCustomRule(tag: String, text: String) {
-                    val lines = text.split("\n")
-                        .map { it.trim() }
-                        .filter { it.isNotEmpty() }
-                    if (lines.isEmpty()) return
-
-                    val rule = JSONObject()
-                    rule.put("outboundTag", tag)
-
-                    val domains = JSONArray()
-                    val ips = JSONArray()
-                    val ports = JSONArray()
-                    val networks = JSONArray()
-
-                    for (line in lines) {
-                        if (line.startsWith("#") || line.startsWith("//")) continue
-                        val lower = line.lowercase()
-                        if (lower == "udp:443" || lower == "443/udp") {
-                            networks.put("udp")
-                            ports.put("443")
-                        } else if (lower.startsWith("udp:")) {
-                            networks.put("udp")
-                            ports.put(line.substring(4).trim())
-                        } else if (lower.startsWith("tcp:")) {
-                            networks.put("tcp")
-                            ports.put(line.substring(4).trim())
-                        } else if (lower.startsWith("port:")) {
-                            ports.put(line.substring(5).trim())
-                        } else if (lower.startsWith("network:")) {
-                            networks.put(line.substring(8).trim())
-                        } else if (lower.startsWith("domain:") || lower.startsWith("full:") || lower.startsWith("regexp:") || lower.startsWith("keyword:") || lower.startsWith("geosite:")) {
-                            domains.put(line)
-                        } else if (lower.startsWith("geoip:")) {
-                            ips.put(line)
-                        } else {
-                            val isProbablyIp = lower.contains("/") || (lower.any { it.isDigit() } && !lower.any { it in 'a'..'z' || it in 'A'..'Z' })
-                            if (isProbablyIp) {
-                                ips.put(line)
-                            } else {
-                                domains.put(line)
-                            }
-                        }
-                    }
-
-                    if (domains.length() > 0) rule.put("domain", domains)
-                    if (ips.length() > 0) rule.put("ip", ips)
-                    if (ports.length() > 0) rule.put("port", ports)
-                    if (networks.length() > 0) rule.put("network", networks)
-
-                    if (domains.length() > 0 || ips.length() > 0 || ports.length() > 0 || networks.length() > 0) {
-                        rulesArray.put(rule)
-                    }
-                }
-
-                // Compile block first, then direct, then proxy
-                addCustomRule("block", customBlock)
-                addCustomRule("direct", customDirect)
-                addCustomRule("proxy", customProxy)
-
-                // Ensure default UDP 443 block rule is included if not explicitly present
-                var hasUDP443Block = false
-                for (i in 0 until rulesArray.length()) {
-                    val r = rulesArray.getJSONObject(i)
-                    if (r.optString("outboundTag") == "block") {
-                        val netArr = r.optJSONArray("network")
-                        val portArr = r.optJSONArray("port")
-                        if (netArr != null && portArr != null && netArr.length() > 0 && portArr.length() > 0) {
-                            if (netArr.getString(0) == "udp" && portArr.getString(0) == "443") {
-                                hasUDP443Block = true
-                                break
-                            }
-                        }
-                    }
-                }
-                if (!hasUDP443Block) {
-                    val defaultBlockRule = JSONObject()
-                    defaultBlockRule.put("outboundTag", "block")
-                    val netArr = JSONArray().apply { put("udp") }
-                    val portArr = JSONArray().apply { put("443") }
-                    defaultBlockRule.put("network", netArr)
-                    defaultBlockRule.put("port", portArr)
-                    rulesArray.put(defaultBlockRule)
-                }
-            }
-        }
+        rulesArray.put(defaultBlockRule)
 
         root.put("rules", rulesArray)
         return root.toString(2)

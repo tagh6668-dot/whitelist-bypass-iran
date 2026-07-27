@@ -76,7 +76,7 @@ object Prefs {
         get() = prefs.getInt(PrefsKeys.MTU, Vpn.MTU)
         set(value) = prefs.edit { putInt(PrefsKeys.MTU, value) }
 
-var socksPort: Long
+    var socksPort: Long
         get() = prefs.getLong(PrefsKeys.SOCKS_PORT, Ports.DEFAULT_SOCKS)
         set(value) = prefs.edit { putLong(PrefsKeys.SOCKS_PORT, value) }
 
@@ -122,9 +122,49 @@ var socksPort: Long
         get() = prefs.getString(PrefsKeys.DNS_SECONDARY, Vpn.DNS_SECONDARY)!!
         set(value) = prefs.edit { putString(PrefsKeys.DNS_SECONDARY, value) }
 
+    // --- Local DNS & Fake DNS Preferences ---
+
+    var localDnsEnabled: Boolean
+        get() = prefs.getBoolean(PrefsKeys.PREF_LOCAL_DNS_ENABLED, false)
+        set(value) = prefs.edit { putBoolean(PrefsKeys.PREF_LOCAL_DNS_ENABLED, value) }
+
+    var fakeDnsEnabled: Boolean
+        get() = prefs.getBoolean(PrefsKeys.PREF_FAKE_DNS_ENABLED, false)
+        set(value) = prefs.edit { putBoolean(PrefsKeys.PREF_FAKE_DNS_ENABLED, value) }
+
+    var localDnsPort: String
+        get() = prefs.getString(PrefsKeys.PREF_LOCAL_DNS_PORT, Vpn.PORT_LOCAL_DNS) ?: Vpn.PORT_LOCAL_DNS
+        set(value) = prefs.edit { putString(PrefsKeys.PREF_LOCAL_DNS_PORT, value) }
+
+    var remoteDns: String
+        get() = prefs.getString(PrefsKeys.PREF_REMOTE_DNS, "https://1.1.1.1/dns-query") ?: "https://1.1.1.1/dns-query"
+        set(value) = prefs.edit { putString(PrefsKeys.PREF_REMOTE_DNS, value) }
+
+    var domesticDns: String
+        get() = prefs.getString(PrefsKeys.PREF_DOMESTIC_DNS, "223.5.5.5,119.29.29.29") ?: "223.5.5.5,119.29.29.29"
+        set(value) = prefs.edit { putString(PrefsKeys.PREF_DOMESTIC_DNS, value) }
+
+    var dnsHosts: String
+        get() = prefs.getString(PrefsKeys.PREF_DNS_HOSTS, "") ?: ""
+        set(value) = prefs.edit { putString(PrefsKeys.PREF_DNS_HOSTS, value) }
+
+    var vpnDns: String
+        get() = prefs.getString(PrefsKeys.PREF_VPN_DNS, "") ?: ""
+        set(value) = prefs.edit { putString(PrefsKeys.PREF_VPN_DNS, value) }
+
+    // --- Routing Preferences ---
+
     var routingEnabled: Boolean
         get() = prefs.getBoolean(PrefsKeys.ROUTING_ENABLED, true)
         set(value) = prefs.edit { putBoolean(PrefsKeys.ROUTING_ENABLED, value) }
+
+    var routingDomainStrategy: String
+        get() = prefs.getString(PrefsKeys.PREF_ROUTING_DOMAIN_STRATEGY, "AsIs") ?: "AsIs"
+        set(value) = prefs.edit { putString(PrefsKeys.PREF_ROUTING_DOMAIN_STRATEGY, value) }
+
+    var routingRuleset: String
+        get() = prefs.getString(PrefsKeys.PREF_ROUTING_RULESET, "") ?: ""
+        set(value) = prefs.edit { putString(PrefsKeys.PREF_ROUTING_RULESET, value) }
 
     var routingConfigJson: String
         get() = prefs.getString(PrefsKeys.ROUTING_CONFIG_JSON, """{

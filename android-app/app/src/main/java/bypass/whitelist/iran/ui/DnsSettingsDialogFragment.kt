@@ -3,13 +3,11 @@ package bypass.whitelist.iran.ui
 import android.app.Dialog
 import android.os.Bundle
 import android.view.View
+import android.widget.CheckBox
 import android.widget.EditText
-import android.widget.RadioButton
-import android.widget.RadioGroup
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.DialogFragment
 import bypass.whitelist.iran.R
-import bypass.whitelist.iran.util.DnsMode
 import bypass.whitelist.iran.util.Prefs
 
 class DnsSettingsDialogFragment : DialogFragment {
@@ -25,34 +23,43 @@ class DnsSettingsDialogFragment : DialogFragment {
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val view = layoutInflater.inflate(R.layout.dialog_dns_settings, null)
 
-        val dnsModeGroup = view.findViewById<RadioGroup>(R.id.dnsModeGroup)
-        val dnsModeSystem = view.findViewById<RadioButton>(R.id.dnsModeSystem)
-        val dnsModeCustom = view.findViewById<RadioButton>(R.id.dnsModeCustom)
-        val customDnsContainer = view.findViewById<View>(R.id.customDnsContainer)
-        val primaryInput = view.findViewById<EditText>(R.id.dnsPrimaryInput)
-        val secondaryInput = view.findViewById<EditText>(R.id.dnsSecondaryInput)
+        val cbLocalDns = view.findViewById<CheckBox>(R.id.cbLocalDns)
+        val cbFakeDns = view.findViewById<CheckBox>(R.id.cbFakeDns)
+        val etRemoteDns = view.findViewById<EditText>(R.id.etRemoteDns)
+        val etDomesticDns = view.findViewById<EditText>(R.id.etDomesticDns)
+        val etLocalDnsPort = view.findViewById<EditText>(R.id.etLocalDnsPort)
+        val etDnsHosts = view.findViewById<EditText>(R.id.etDnsHosts)
+        val etVpnDns = view.findViewById<EditText>(R.id.etVpnDns)
 
-        when (Prefs.dnsMode) {
-            DnsMode.SYSTEM -> dnsModeSystem.isChecked = true
-            DnsMode.CUSTOM -> dnsModeCustom.isChecked = true
-        }
-        customDnsContainer.visibility = if (Prefs.dnsMode == DnsMode.CUSTOM) View.VISIBLE else View.GONE
-        primaryInput.setText(Prefs.dnsPrimary)
-        secondaryInput.setText(Prefs.dnsSecondary)
+        cbLocalDns.isChecked = Prefs.localDnsEnabled
+        cbFakeDns.isChecked = Prefs.fakeDnsEnabled
+        cbFakeDns.isEnabled = Prefs.localDnsEnabled
 
-        dnsModeGroup.setOnCheckedChangeListener { _, checkedId ->
-            customDnsContainer.visibility = if (checkedId == R.id.dnsModeCustom) View.VISIBLE else View.GONE
+        etRemoteDns.setText(Prefs.remoteDns)
+        etDomesticDns.setText(Prefs.domesticDns)
+        etLocalDnsPort.setText(Prefs.localDnsPort)
+        etDnsHosts.setText(Prefs.dnsHosts)
+        etVpnDns.setText(Prefs.vpnDns)
+
+        cbLocalDns.setOnCheckedChangeListener { _, isChecked ->
+            cbFakeDns.isEnabled = isChecked
+            if (!isChecked) {
+                cbFakeDns.isChecked = false
+            }
         }
 
         return AlertDialog.Builder(requireContext())
             .setTitle(R.string.dns_settings_title)
             .setView(view)
             .setPositiveButton(android.R.string.ok) { _, _ ->
-                Prefs.dnsMode = if (dnsModeCustom.isChecked) DnsMode.CUSTOM else DnsMode.SYSTEM
-                if (dnsModeCustom.isChecked) {
-                    Prefs.dnsPrimary = primaryInput.text.toString()
-                    Prefs.dnsSecondary = secondaryInput.text.toString()
-                }
+                Prefs.localDnsEnabled = cbLocalDns.isChecked
+                Prefs.fakeDnsEnabled = cbFakeDns.isChecked
+                Prefs.remoteDns = etRemoteDns.text.toString().trim()
+                Prefs.domesticDns = etDomesticDns.text.toString().trim()
+                Prefs.localDnsPort = etLocalDnsPort.text.toString().trim().ifEmpty { "10853" }
+                Prefs.dnsHosts = etDnsHosts.text.toString().trim()
+                Prefs.vpnDns = etVpnDns.text.toString().trim()
+
                 onSaveListener?.invoke()
             }
             .setNegativeButton(android.R.string.cancel, null)

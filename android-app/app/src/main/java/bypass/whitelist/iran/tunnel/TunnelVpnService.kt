@@ -15,6 +15,7 @@ import bypass.whitelist.iran.R
 import bypass.whitelist.iran.util.Callback
 import bypass.whitelist.iran.util.DnsMode
 import bypass.whitelist.iran.util.Prefs
+import bypass.whitelist.iran.util.SettingsManager
 import bypass.whitelist.iran.util.SocksAuth
 import bypass.whitelist.iran.util.Vpn
 import androidbind.Androidbind
@@ -87,24 +88,33 @@ class TunnelVpnService : VpnService() {
             .addRoute(Vpn.ROUTE, 0)
             .setMtu(Prefs.mtu)
 
-        when (Prefs.dnsMode) {
-            DnsMode.SYSTEM -> {
-                val systemDns = getSystemDnsServers()
-                if (systemDns.isNotEmpty()) {
-                    for (dns in systemDns) builder.addDnsServer(dns)
-                } else {
-                    builder.addDnsServer(Vpn.DNS_PRIMARY)
-                    builder.addDnsServer(Vpn.DNS_SECONDARY)
-                }
+        if (Prefs.localDnsEnabled) {
+            val vpnDnsList = SettingsManager.getVpnDnsServers()
+            for (dns in vpnDnsList) {
+                try {
+                    builder.addDnsServer(dns)
+                } catch (ignored: Exception) {}
             }
-            DnsMode.CUSTOM -> {
-                val primary = Prefs.dnsPrimary.trim()
-                val secondary = Prefs.dnsSecondary.trim()
-                if (primary.isNotEmpty()) builder.addDnsServer(primary)
-                if (secondary.isNotEmpty()) builder.addDnsServer(secondary)
-                if (primary.isEmpty() && secondary.isEmpty()) {
-                    builder.addDnsServer(Vpn.DNS_PRIMARY)
-                    builder.addDnsServer(Vpn.DNS_SECONDARY)
+        } else {
+            when (Prefs.dnsMode) {
+                DnsMode.SYSTEM -> {
+                    val systemDns = getSystemDnsServers()
+                    if (systemDns.isNotEmpty()) {
+                        for (dns in systemDns) builder.addDnsServer(dns)
+                    } else {
+                        builder.addDnsServer(Vpn.DNS_PRIMARY)
+                        builder.addDnsServer(Vpn.DNS_SECONDARY)
+                    }
+                }
+                DnsMode.CUSTOM -> {
+                    val primary = Prefs.dnsPrimary.trim()
+                    val secondary = Prefs.dnsSecondary.trim()
+                    if (primary.isNotEmpty()) builder.addDnsServer(primary)
+                    if (secondary.isNotEmpty()) builder.addDnsServer(secondary)
+                    if (primary.isEmpty() && secondary.isEmpty()) {
+                        builder.addDnsServer(Vpn.DNS_PRIMARY)
+                        builder.addDnsServer(Vpn.DNS_SECONDARY)
+                    }
                 }
             }
         }
@@ -199,10 +209,10 @@ class TunnelVpnService : VpnService() {
         return builder
             .setContentTitle(getString(R.string.notification_vpn_title))
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_lock_lock)
-            .setOngoing(true)
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(openPending)
-            .addAction(Notification.Action.Builder(null, getString(R.string.notification_disconnect), stopPending).build())
+            .addAction(0, getString(R.string.notification_disconnect), stopPending)
+            .setOngoing(true)
             .build()
     }
 }

@@ -53,8 +53,13 @@ type Rule struct {
 }
 
 type RouterConfig struct {
-	DomainStrategy string `json:"domainStrategy"` // "AsIs", "IPIfNonMatch", "IPOnDemand"
-	Rules          []Rule `json:"rules"`
+	DomainStrategy  string `json:"domainStrategy"`  // "AsIs", "IPIfNonMatch", "IPOnDemand"
+	LocalDNSEnabled bool   `json:"localDnsEnabled"` // Enable local DNS
+	FakeDNSEnabled  bool   `json:"fakeDnsEnabled"`  // Enable fake DNS
+	RemoteDNS       string `json:"remoteDns"`
+	DomesticDNS     string `json:"domesticDns"`
+	LocalDNSPort    string `json:"localDnsPort"`
+	Rules           []Rule `json:"rules"`
 }
 
 type domainMatcher struct {
@@ -282,10 +287,15 @@ type compiledRule struct {
 }
 
 type Router struct {
-	domainStrategy string
-	compiledRules  []compiledRule
-	mu             sync.RWMutex
-	logFn          func(string, ...any)
+	domainStrategy  string
+	localDnsEnabled bool
+	fakeDnsEnabled  bool
+	remoteDns       string
+	domesticDns     string
+	localDnsPort    string
+	compiledRules   []compiledRule
+	mu              sync.RWMutex
+	logFn           func(string, ...any)
 }
 
 func NewRouter(logFn func(string, ...any)) *Router {
@@ -300,18 +310,33 @@ func NewRouter(logFn func(string, ...any)) *Router {
 	return r
 }
 
-func defaultUDP443Rule() compiledRule {
-	return compiledRule{
-		outboundTag: "block",
-		networks:    []string{"udp"},
-		portMatchers: []portMatcher{
-			{startPort: 443, endPort: 443},
-		},
-	}
-}
-
 func (r *Router) loadDefaults() {
 	r.compiledRules = []compiledRule{}
+}
+
+func (r *Router) LocalDNSEnabled() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.localDnsEnabled
+}
+
+func (r *Router) FakeDNSEnabled() bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.localDnsEnabled && r.fakeDnsEnabled
+}
+
+func (r *Router) SetLocalDNS(enabled, fakeDNS bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.localDnsEnabled = enabled
+	r.fakeDnsEnabled = fakeDNS
+}
+
+func (r *Router) DomainStrategy() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.domainStrategy
 }
 
 func (r *Router) LoadConfig(configPath string) error {
@@ -337,6 +362,11 @@ func (r *Router) LoadConfig(configPath string) error {
 	if cfg.DomainStrategy != "" {
 		r.domainStrategy = cfg.DomainStrategy
 	}
+	r.localDnsEnabled = cfg.LocalDNSEnabled
+	r.fakeDnsEnabled = cfg.FakeDNSEnabled
+	r.remoteDns = cfg.RemoteDNS
+	r.domesticDns = cfg.DomesticDNS
+	r.localDnsPort = cfg.LocalDNSPort
 
 	var compiled []compiledRule
 
@@ -384,7 +414,8 @@ func (r *Router) LoadConfig(configPath string) error {
 	}
 
 	r.compiledRules = compiled
-	r.logFn("router: successfully loaded %d routing rules from %s", len(compiled), configPath)
+	r.logFn("router: successfully loaded %d routing rules from %s (domainStrategy=%s, localDNS=%v, fakeDNS=%v)",
+		len(compiled), configPath, r.domainStrategy, r.localDnsEnabled, r.fakeDnsEnabled)
 	return nil
 }
 

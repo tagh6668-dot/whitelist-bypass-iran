@@ -4,6 +4,7 @@ import java.security.SecureRandom
 
 object Ports {
     const val DEFAULT_SOCKS = 1080L
+    const val DEFAULT_LOCAL_DNS = 10853L
 }
 
 enum class SocksAuthMode { AUTO, MANUAL }
@@ -55,12 +56,24 @@ object PrefsKeys {
     const val DNS_MODE = "dns_mode"
     const val DNS_PRIMARY = "dns_primary"
     const val DNS_SECONDARY = "dns_secondary"
+
+    // Local DNS & Fake DNS & Routing keys from v2
+    const val PREF_LOCAL_DNS_ENABLED = "pref_local_dns_enabled"
+    const val PREF_FAKE_DNS_ENABLED = "pref_fake_dns_enabled"
+    const val PREF_LOCAL_DNS_PORT = "pref_local_dns_port"
+    const val PREF_REMOTE_DNS = "pref_remote_dns"
+    const val PREF_DOMESTIC_DNS = "pref_domestic_dns"
+    const val PREF_DNS_HOSTS = "pref_dns_hosts"
+    const val PREF_VPN_DNS = "pref_vpn_dns"
+
     const val ROUTING_ENABLED = "routing_enabled"
     const val ROUTING_CONFIG_JSON = "routing_config_json"
     const val ROUTING_MODE = "routing_mode"
     const val ROUTING_CUSTOM_DIRECT = "routing_custom_direct"
     const val ROUTING_CUSTOM_BLOCK = "routing_custom_block"
     const val ROUTING_CUSTOM_PROXY = "routing_custom_proxy"
+    const val PREF_ROUTING_DOMAIN_STRATEGY = "pref_routing_domain_strategy"
+    const val PREF_ROUTING_RULESET = "pref_routing_ruleset"
 }
 
 object VP8Defaults {
@@ -77,4 +90,5 @@ object Vpn {
     const val DNS_PRIMARY = "1.1.1.1"
     const val DNS_SECONDARY = "1.0.0.1"
     const val SESSION_NAME = "WhitelistBypass"
+    const val PORT_LOCAL_DNS = "10853"
 }

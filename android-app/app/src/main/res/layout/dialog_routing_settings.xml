@@ -20,8 +20,8 @@
             android:id="@+id/routingSettingsContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:layout_marginTop="8dp">
+            android:layout_marginTop="8dp"
+            android:orientation="vertical">
 
             <View
                 android:layout_width="match_parent"
@@ -32,12 +32,27 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Routing Mode"
-                android:textSize="14sp"
-                android:textColor="?android:attr/textColorSecondary" />
+                android:text="@string/routing_settings_domain_strategy"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="13sp" />
 
             <Spinner
-                android:id="@+id/routingModeSpinner"
+                android:id="@+id/domainStrategySpinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:layout_marginBottom="12dp"
+                android:minHeight="48dp" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/routing_settings_import_predefined_rulesets"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="13sp" />
+
+            <Spinner
+                android:id="@+id/presetRulesetSpinner"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
@@ -62,51 +77,51 @@
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="8dp"
                     android:text="One domain or IP/CIDR per line (e.g. domain:ir or geoip:private)"
-                    android:textSize="12sp"
-                    android:textColor="?android:attr/textColorSecondary" />
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:textSize="12sp" />
 
                 <EditText
                     android:id="@+id/customDirectInput"
                     android:layout_width="match_parent"
                     android:layout_height="180dp"
+                    android:background="?android:attr/editTextBackground"
                     android:gravity="top|start"
                     android:hint="e.g.\nanjammidam.com\nregexp:.*\\.ir$"
                     android:inputType="textMultiLine"
-                    android:scrollbars="vertical"
-                    android:typeface="monospace"
                     android:padding="8dp"
-                    android:background="?android:attr/editTextBackground"
+                    android:scrollbars="vertical"
                     android:textColor="?android:attr/textColorPrimary"
-                    android:textSize="13sp" />
+                    android:textSize="13sp"
+                    android:typeface="monospace" />
 
                 <EditText
                     android:id="@+id/customBlockedInput"
                     android:layout_width="match_parent"
                     android:layout_height="180dp"
+                    android:background="?android:attr/editTextBackground"
                     android:gravity="top|start"
                     android:hint="e.g.\nudp:443\ngeosite:category-ads-all"
                     android:inputType="textMultiLine"
-                    android:scrollbars="vertical"
-                    android:typeface="monospace"
                     android:padding="8dp"
-                    android:background="?android:attr/editTextBackground"
+                    android:scrollbars="vertical"
                     android:textColor="?android:attr/textColorPrimary"
                     android:textSize="13sp"
+                    android:typeface="monospace"
                     android:visibility="gone" />
 
                 <EditText
                     android:id="@+id/customProxyInput"
                     android:layout_width="match_parent"
                     android:layout_height="180dp"
+                    android:background="?android:attr/editTextBackground"
                     android:gravity="top|start"
                     android:hint="e.g.\ndomain:google.com"
                     android:inputType="textMultiLine"
-                    android:scrollbars="vertical"
-                    android:typeface="monospace"
                     android:padding="8dp"
-                    android:background="?android:attr/editTextBackground"
+                    android:scrollbars="vertical"
                     android:textColor="?android:attr/textColorPrimary"
                     android:textSize="13sp"
+                    android:typeface="monospace"
                     android:visibility="gone" />
 
             </LinearLayout>

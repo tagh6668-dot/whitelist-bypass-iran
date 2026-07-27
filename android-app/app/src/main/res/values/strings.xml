@@ -52,25 +52,43 @@
     <string name="vp8_fps_hint">e.g. 24</string>
     <string name="vp8_batch_label">Batch</string>
     <string name="vp8_batch_hint">e.g. 1, 8, 30</string>
-    <string name="menu_dns_settings">DNS settings</string>
     <string name="vp8_idle_fps_label">Idle FPS</string>
     <string name="vp8_idle_fps_hint">e.g. 1 (lower saves data, higher prevents CGNAT timeouts)</string>
     <string name="mtu_label">MTU</string>
     <string name="mtu_hint">e.g. 1380 or 1500 (lower avoids fragmentation/SSL MAC errors)</string>
-    <string name="dns_settings_title">DNS</string>
+
+    <string name="menu_dns_settings">DNS settings</string>
+    <string name="dns_settings_title">DNS Settings</string>
     <string name="dns_mode_label">DNS mode</string>
     <string name="dns_mode_system">System</string>
     <string name="dns_mode_custom">Custom</string>
     <string name="dns_primary_hint">Primary DNS</string>
     <string name="dns_secondary_hint">Secondary DNS</string>
+    <string name="title_pref_local_dns_enabled">Enable local DNS</string>
+    <string name="summary_pref_local_dns_enabled">DNS processed by core‘s DNS module (Recommended if you need routing bypassing LAN and mainland addresses)</string>
+    <string name="title_pref_fake_dns_enabled">Enable fake DNS</string>
+    <string name="summary_pref_fake_dns_enabled">Local DNS returns fake IP addresses (faster, but it may not work for some apps)</string>
+    <string name="title_pref_remote_dns">Remote DNS (udp/tcp/https/quic)(Optional)</string>
+    <string name="summary_pref_remote_dns">DNS</string>
+    <string name="title_pref_domestic_dns">Domestic DNS (Optional)</string>
+    <string name="summary_pref_domestic_dns">DNS</string>
+    <string name="title_pref_dns_hosts">DNS hosts (Format: domain:address,…)</string>
+    <string name="summary_pref_dns_hosts">domain:address,…</string>
+    <string name="title_pref_local_dns_port">Local DNS port</string>
+    <string name="summary_pref_local_dns_port">Local DNS port</string>
+    <string name="title_pref_vpn_dns">VPN DNS (only IPv4/v6)</string>
+
     <string name="menu_routing_settings">Routing settings</string>
     <string name="routing_settings_title">Routing Settings</string>
     <string name="routing_enable_label">Enable custom routing</string>
+    <string name="routing_settings_domain_strategy">Domain strategy</string>
+    <string name="routing_settings_import_predefined_rulesets">Import predefined rulesets</string>
     <string name="routing_config_hint">Rules JSON Config</string>
     <string name="routing_validate_btn">Validate JSON</string>
     <string name="routing_invalid_json">Invalid JSON format</string>
     <string name="routing_valid_json">Valid JSON format</string>
     <string name="routing_reset_btn">Reset to Template</string>
+
     <string name="notification_vpn_title">VPN active</string>
     <string name="notification_proxy_title">Proxy active</string>
     <string name="notification_disconnect">Disconnect</string>

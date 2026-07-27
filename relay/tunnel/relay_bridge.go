@@ -53,6 +53,8 @@ type RelayBridge struct {
 
 	dohResolver *DoHResolver
 
+	fakeDNS *FakeDNS
+
 	dnsCache sync.Map // IP (string) -> Domain (string)
 
 	systemDNS []string
@@ -89,6 +91,7 @@ func NewRelayBridge(tunnel DataTunnel, mode string, readBuf int, logFn func(stri
 		batchChan:   make(chan []byte, 4096),
 		router:      common.NewRouter(logFn),
 		dohResolver: NewDoHResolver(logFn),
+		fakeDNS:     NewFakeDNS(),
 	}
 	tunnel.SetOnData(rb.handleTunnelData)
 	tunnel.SetOnClose(rb.closeAll)
@@ -97,6 +100,11 @@ func NewRelayBridge(tunnel DataTunnel, mode string, readBuf int, logFn func(stri
 		go rb.udpCleanupWorker()
 	}
 	return rb
+}
+
+func (rb *RelayBridge) SetLocalDNS(enabled, fakeDNS bool) {
+	rb.router.SetLocalDNS(enabled, fakeDNS)
+	rb.logFn("relay: local DNS configured: enabled=%v, fakeDNS=%v", enabled, fakeDNS)
 }
 
 func (rb *RelayBridge) LoadRoutingConfig(path string) error {
@@ -595,7 +603,13 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 
 	sniffedHost := host
 	if ip := net.ParseIP(hostOnly); ip != nil {
-		if domain, ok := rb.dnsCache.Load(ip.String()); ok {
+		if rb.fakeDNS.IsFakeIP(ip) {
+			if domain, ok := rb.fakeDNS.GetDomain(ip); ok {
+				host = net.JoinHostPort(domain, port)
+				sniffedHost = host
+				rb.logFn("relay: FakeDNS TCP Reverse %s -> %s", ip.String(), domain)
+			}
+		} else if domain, ok := rb.dnsCache.Load(ip.String()); ok {
 			sniffedHost = domain.(string) + ":" + port
 			rb.logFn("relay: DNS Sniff %s -> %s", host, sniffedHost)
 		}
@@ -727,9 +741,25 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 
 			route := rb.router.RouteWithNetwork(dstAddr, "udp")
 
-			// DNS Logic: Sniff queries to apply domain-based routing
+			// DNS Logic: FakeDNS or Sniff queries to apply domain-based routing
 			if strings.HasSuffix(dstAddr, ":53") {
-				if domain, _, err := parseDNSResponse(buf[headerLen:n]); err == nil && domain != "" {
+				dnsReq := make([]byte, n-headerLen)
+				copy(dnsReq, buf[headerLen:n])
+
+				if rb.router.FakeDNSEnabled() {
+					resp, domain, err := rb.fakeDNS.BuildResponse(dnsReq)
+					if err == nil && len(resp) > 0 {
+						rb.logFn("relay: FakeDNS answered query for %s", domain)
+						hdr := buf[:headerLen]
+						reply := make([]byte, len(hdr)+len(resp))
+						copy(reply, hdr)
+						copy(reply[len(hdr):], resp)
+						udpConn.WriteToUDP(reply, addr)
+						continue
+					}
+				}
+
+				if domain, _, err := parseDNSResponse(dnsReq); err == nil && domain != "" {
 					domainRoute := rb.router.RouteWithNetwork(domain, "udp")
 					rb.logFn("relay: DNS Sniff Query domain=%s route=%s orig_dst=%s", domain, domainRoute, dstAddr)
 
@@ -765,9 +795,15 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 				}
 			}
 
-			dstHost, _, _ := net.SplitHostPort(dstAddr)
+			dstHost, dstPort, _ := net.SplitHostPort(dstAddr)
 			if ip := net.ParseIP(dstHost); ip != nil {
-				if ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() {
+				if rb.fakeDNS.IsFakeIP(ip) {
+					if realDomain, ok := rb.fakeDNS.GetDomain(ip); ok {
+						dstAddr = net.JoinHostPort(realDomain, dstPort)
+						route = rb.router.RouteWithNetwork(realDomain, "udp")
+						rb.logFn("relay: FakeDNS UDP Reverse %s -> %s (route=%s)", ip.String(), realDomain, route)
+					}
+				} else if ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() {
 					route = "direct"
 				}
 			}
