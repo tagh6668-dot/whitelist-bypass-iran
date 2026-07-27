@@ -105,11 +105,11 @@ var socksPort: Long
 
     var dnsMode: DnsMode
         get() {
-            val name = prefs.getString(PrefsKeys.DNS_MODE, DnsMode.SYSTEM.name)!!
+            val name = prefs.getString(PrefsKeys.DNS_MODE, DnsMode.CUSTOM.name)!!
             return try {
                 DnsMode.valueOf(name)
             } catch (_: IllegalArgumentException) {
-                DnsMode.SYSTEM
+                DnsMode.CUSTOM
             }
         }
         set(value) = prefs.edit { putString(PrefsKeys.DNS_MODE, value.name) }

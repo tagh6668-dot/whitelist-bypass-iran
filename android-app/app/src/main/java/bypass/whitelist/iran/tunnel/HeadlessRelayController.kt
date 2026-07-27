@@ -3,9 +3,11 @@ package bypass.whitelist.iran.tunnel
 import android.content.Context
 import android.net.ConnectivityManager
 import android.util.Log
+import bypass.whitelist.iran.util.DnsMode
 import bypass.whitelist.iran.util.ParamCallback
 import bypass.whitelist.iran.util.Prefs
 import bypass.whitelist.iran.util.SocksAuth
+import bypass.whitelist.iran.util.Vpn
 import java.io.BufferedWriter
 import java.io.File
 import java.io.OutputStreamWriter
@@ -55,11 +57,17 @@ class HeadlessRelayController(
                     "--socks-pass", SocksAuth.pass
                 )
 
-                val systemDns = getSystemDnsServers()
-                if (systemDns.isNotEmpty()) {
+                val dnsServers = if (Prefs.dnsMode == DnsMode.CUSTOM) {
+                    val custom = listOf(Prefs.dnsPrimary.trim(), Prefs.dnsSecondary.trim()).filter { it.isNotEmpty() }
+                    if (custom.isNotEmpty()) custom else listOf(Vpn.DNS_PRIMARY, Vpn.DNS_SECONDARY)
+                } else {
+                    getSystemDnsServers().ifEmpty { listOf(Vpn.DNS_PRIMARY, Vpn.DNS_SECONDARY) }
+                }
+
+                if (dnsServers.isNotEmpty()) {
                     args.add("--system-dns")
-                    args.add(systemDns.joinToString(","))
-                    onLog("System DNS servers passed: ${systemDns.joinToString(",")}")
+                    args.add(dnsServers.joinToString(","))
+                    onLog("DNS servers passed (${Prefs.dnsMode}): ${dnsServers.joinToString(",")}")
                 }
 
                 if (Prefs.routingEnabled) {
@@ -90,9 +98,7 @@ class HeadlessRelayController(
                         line.startsWith("RESOLVE:") -> {
                             val hostname = line.removePrefix("RESOLVE:")
                             try {
-                                val all = InetAddress.getAllByName(hostname)
-                                val address = all.firstOrNull { it is Inet4Address } ?: all.first()
-                                val resolvedIP = address.hostAddress ?: ""
+                                val resolvedIP = resolveHostname(hostname, dnsServers)
                                 Log.d("RELAY", "Resolved $hostname -> $resolvedIP")
                                 writeStdin(resolvedIP)
                             } catch (e: Exception) {
@@ -171,5 +177,147 @@ class HeadlessRelayController(
         val network = connectivityManager.activeNetwork ?: return emptyList()
         val linkProperties = connectivityManager.getLinkProperties(network) ?: return emptyList()
         return linkProperties.dnsServers.mapNotNull { it.hostAddress }
+    }
+
+    private fun isPoisonedIp(ip: String): Boolean {
+        if (ip.isEmpty() || ip == "10.10.34.34" || ip.startsWith("10.10.34.") || ip == "127.0.0.1" || ip == "0.0.0.0") return true
+        return false
+    }
+
+    private fun resolveHostname(hostname: String, dnsServers: List<String>): String {
+        if (hostname.matches(Regex("""^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"""))) {
+            return hostname
+        }
+
+        if (Prefs.dnsMode == DnsMode.CUSTOM || dnsServers.isNotEmpty()) {
+            for (server in dnsServers) {
+                val ip = queryDnsUdp(hostname, server)
+                if (!ip.isNullOrEmpty() && !isPoisonedIp(ip)) {
+                    return ip
+                }
+            }
+        }
+
+        try {
+            val all = InetAddress.getAllByName(hostname)
+            val address = all.firstOrNull { it is Inet4Address && !isPoisonedIp(it.hostAddress ?: "") }
+                ?: all.firstOrNull { !isPoisonedIp(it.hostAddress ?: "") }
+            val resolved = address?.hostAddress ?: ""
+            if (resolved.isNotEmpty() && !isPoisonedIp(resolved)) {
+                return resolved
+            }
+        } catch (_: Exception) {
+        }
+
+        val fallbackServers = listOf("1.1.1.1", "8.8.8.8", "1.0.0.1")
+        for (server in fallbackServers) {
+            val ip = queryDnsUdp(hostname, server)
+            if (!ip.isNullOrEmpty() && !isPoisonedIp(ip)) {
+                return ip
+            }
+        }
+
+        return ""
+    }
+
+    private fun queryDnsUdp(hostname: String, dnsServerIp: String, timeoutMs: Int = 2000): String? {
+        var socket: java.net.DatagramSocket? = null
+        try {
+            socket = java.net.DatagramSocket()
+            socket.soTimeout = timeoutMs
+            val random = java.util.Random()
+            val txId = random.nextInt(65535)
+
+            val baos = java.io.ByteArrayOutputStream()
+            val dos = java.io.DataOutputStream(baos)
+
+            dos.writeShort(txId)
+            dos.writeShort(0x0100)
+            dos.writeShort(0x0001)
+            dos.writeShort(0x0000)
+            dos.writeShort(0x0000)
+            dos.writeShort(0x0000)
+
+            for (part in hostname.split(".")) {
+                val bytes = part.toByteArray(Charsets.UTF_8)
+                dos.writeByte(bytes.size)
+                dos.write(bytes)
+            }
+            dos.writeByte(0)
+            dos.writeShort(0x0001)
+            dos.writeShort(0x0001)
+
+            val queryData = baos.toByteArray()
+            val serverAddr = InetAddress.getByName(dnsServerIp)
+            val sendPacket = java.net.DatagramPacket(queryData, queryData.size, serverAddr, 53)
+            socket.send(sendPacket)
+
+            val recvBuf = ByteArray(512)
+            val recvPacket = java.net.DatagramPacket(recvBuf, recvBuf.size)
+            socket.receive(recvPacket)
+
+            val resp = recvPacket.data
+            if (resp.size < 12) return null
+
+            val dis = java.io.DataInputStream(java.io.ByteArrayInputStream(resp))
+            val respId = dis.readUnsignedShort()
+            if (respId != txId) return null
+
+            val flags = dis.readUnsignedShort()
+            if ((flags and 0x000F) != 0) return null
+
+            val qdCount = dis.readUnsignedShort()
+            val anCount = dis.readUnsignedShort()
+            dis.readUnsignedShort()
+            dis.readUnsignedShort()
+
+            for (i in 0 until qdCount) {
+                while (true) {
+                    val len = dis.readUnsignedByte()
+                    if (len == 0) break
+                    if (len >= 192) {
+                        dis.readByte()
+                        break
+                    }
+                    dis.skipBytes(len)
+                }
+                dis.readUnsignedShort()
+                dis.readUnsignedShort()
+            }
+
+            for (i in 0 until anCount) {
+                fun skipName() {
+                    val b = dis.readUnsignedByte()
+                    if (b >= 192) {
+                        dis.readByte()
+                    } else if (b > 0) {
+                        dis.skipBytes(b)
+                        skipName()
+                    }
+                }
+                skipName()
+
+                val type = dis.readUnsignedShort()
+                dis.readUnsignedShort()
+                dis.readInt()
+                val rdLength = dis.readUnsignedShort()
+
+                if (type == 1 && rdLength == 4) {
+                    val ipBytes = ByteArray(4)
+                    dis.readFully(ipBytes)
+                    val ipStr = InetAddress.getByAddress(ipBytes).hostAddress
+                    if (ipStr != null && !isPoisonedIp(ipStr)) {
+                        return ipStr
+                    }
+                } else {
+                    dis.skipBytes(rdLength)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("RELAY", "UDP DNS query to $dnsServerIp failed for $hostname: ${e.message}")
+        } finally {
+            try { socket?.close() } catch (_: Exception) {}
+        }
+        return null
     }
 }
