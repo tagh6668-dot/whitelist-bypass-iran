@@ -56,13 +56,13 @@ func DecodeVP8Config(payload []byte) (fps, batch int, ok bool) {
 // reducing header overhead from 9 bytes to 3-5 bytes.
 func EncodeFrame(connID uint32, msgType byte, payload []byte) []byte {
 	// Encode connID as Varint
-	var connBuf [5]byte
+	var connBuf [binary.MaxVarintLen64]byte
 	connLen := binary.PutUvarint(connBuf[:], uint64(connID))
 
 	// The remaining length after frameLen is: connLen + 1 (msgType) + len(payload)
 	remLen := connLen + 1 + len(payload)
 
-	var lenBuf [5]byte
+	var lenBuf [binary.MaxVarintLen64]byte
 	lenLen := binary.PutUvarint(lenBuf[:], uint64(remLen))
 
 	buf := make([]byte, lenLen+remLen)
