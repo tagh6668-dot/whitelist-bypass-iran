@@ -45,7 +45,7 @@ GOOS=linux GOARCH=386 go build -o relay-linux-ia32 .
 ls -lh relay-darwin relay-windows-*.exe relay-linux-* 2>/dev/null || true
 
 echo ""
-echo "=== Building headless-bale-creator ==="
+echo "=== Building bale-free-creator ==="
 cd "$HEADLESS_BALE_DIR"
 
 if command -v lipo >/dev/null; then
@@ -108,8 +108,8 @@ if [ "$PLATFORM" = "linux" ] || [ "$PLATFORM" = "all" ]; then
     echo ""
     echo "=== Copying headless binaries to prebuilts ==="
     mkdir -p "$ROOT/prebuilts"
-    cp "$HEADLESS_DIR/headless-bale-linux-x64" "$ROOT/prebuilts/headless-bale-creator-linux-x64"
-    cp "$HEADLESS_DIR/headless-bale-linux-ia32" "$ROOT/prebuilts/headless-bale-creator-linux-ia32"
+    cp "$HEADLESS_DIR/headless-bale-linux-x64" "$ROOT/prebuilts/bale-free-creator-linux-x64"
+    cp "$HEADLESS_DIR/headless-bale-linux-ia32" "$ROOT/prebuilts/bale-free-creator-linux-ia32"
 fi
 
 rm -f "$RELAY_DIR"/relay-darwin "$RELAY_DIR"/relay-windows-*.exe "$RELAY_DIR"/relay-linux-*
@@ -118,7 +118,3 @@ rm -f "$HEADLESS_DIR"/headless-bale-darwin "$HEADLESS_DIR"/headless-bale-windows
 rm -f "$HEADLESS_DIR"/headless-bale-bundle "$HEADLESS_DIR"/headless-bale-bundle.exe
 
 "$ROOT/clean-prebuilts.sh"
-
-echo ""
-echo "=== Done ==="
-ls -lh "$ROOT/prebuilts/" 2>/dev/null || true

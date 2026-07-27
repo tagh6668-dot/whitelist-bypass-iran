@@ -67,18 +67,18 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease
 
-      - name: Build Headless Creator for Ubuntu
+      - name: Build Bale Free Creator for Ubuntu
         run: |
           go -C headless/bale mod tidy
-          go -C headless/bale build -trimpath -ldflags="-s -w" -o headless-bale-creator-linux-x64 .
+          go -C headless/bale build -trimpath -ldflags="-s -w" -o bale-free-creator-linux-x64 .
 
       - name: Prepare Release Artifacts
         run: |
           mkdir -p release-artifacts
           # Copy and rename the APK for v8a phones (release build has the native libraries)
           cp android-app/app/build/outputs/apk/release/app-release.apk release-artifacts/whitelist-bypass-v8a.apk
-          # Copy the headless Ubuntu creator binary
-          cp headless/bale/headless-bale-creator-linux-x64 release-artifacts/headless-bale-creator-linux-x64
+          # Copy the bale free creator binary
+          cp headless/bale/bale-free-creator-linux-x64 release-artifacts/bale-free-creator-linux-x64
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
@@ -102,6 +102,6 @@ jobs:
           target_commitish: ${{ github.sha }}
           files: |
             release-artifacts/whitelist-bypass-v8a.apk
-            release-artifacts/headless-bale-creator-linux-x64
+            release-artifacts/bale-free-creator-linux-x64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -129,8 +129,8 @@ Output in `prebuilts/`:
 | `WhitelistBypass Joiner-*-x86_64.AppImage` | Linux x64 |
 | `whitelist-bypass.apk` | Android |
 | `whitelist-bypass-proxy.ipa` | iOS, unsigned |
-| `headless-bale-creator-linux-x64` | Linux x64 |
-| `headless-bale-creator-linux-ia32` | Linux x86 |
+| `bale-free-creator-linux-x64` | Linux x64 |
+| `bale-free-creator-linux-ia32` | Linux x86 |
 
 ### iOS
 
@@ -163,7 +163,7 @@ Pure Go binaries that talk to Bale's API/SFU directly. No Electron, no JS hooks.
 Two binaries are produced - the creator and the desktop joiner:
 
 ```sh
-./headless/bale/headless-bale-creator        --cookies bale-cookies.json
+./headless/bale/bale-free-creator        --cookies bale-cookies.json
 ./headless/bale-joiner/headless-bale-joiner  --join-link <link> --socks-port 1080
 ```
 

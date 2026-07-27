@@ -7,7 +7,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-CREATOR="$ROOT/headless/bale/headless-bale-creator"
+CREATOR="$ROOT/headless/bale/bale-free-creator"
 JOINER="$ROOT/headless/bale-joiner/headless-bale-joiner"
 COOKIES="${1:-$ROOT/bale-cookies.json}"
 SOCKS_A=11081

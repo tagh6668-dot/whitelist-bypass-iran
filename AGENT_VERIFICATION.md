@@ -53,6 +53,6 @@ All **four core optimizations** requested in `Agent.md` have been fully reviewed
 ## Final Compilation & Test Results
 
 - **Go Unit Tests:** `go test -v ./...` in `relay/tunnel` and `relay/common` passed 100%.
-- **Binary Builds:** Executables for `relay`, `headless-bale-creator`, `headless-bale-joiner`, and `desktop-joiner` compile without errors under Go 1.24.0.
+- **Binary Builds:** Executables for `relay`, `bale-free-creator`, `headless-bale-joiner`, and `desktop-joiner` compile without errors under Go 1.24.0.
 - **GitHub Actions:** Verified that no `.github/workflows` directory exists in the repository (ensuring non-usage of GitHub Actions).
 - **Git Sync:** All code and audit verifications synced to GitHub (`tagh6668-dot/whitelist-bypass-iran`).

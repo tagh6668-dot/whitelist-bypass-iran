@@ -1,5 +1,5 @@
 #!/bin/sh
-# Full e2e: spawn headless-bale-creator, feed its join_link to anonymous
+# Full e2e: spawn bale-free-creator, feed its join_link to anonymous
 # headless-bale-joiner, then verify SOCKS5 reaches the public internet and
 # measure throughput.
 #
@@ -9,7 +9,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-CREATOR="$ROOT/headless/bale/headless-bale-creator"
+CREATOR="$ROOT/headless/bale/bale-free-creator"
 JOINER="$ROOT/headless/bale-joiner/headless-bale-joiner"
 COOKIES="${1:-$ROOT/bale-cookies.json}"
 SOCKS_PORT=11080

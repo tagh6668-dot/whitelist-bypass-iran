@@ -47,7 +47,7 @@ All optimizations have been structurally and logically integrated without breaki
    - `TestRelayBridgeBatching` (Correct output batching queue and timed flush logic)
    - `TestVP8DataTunnelAdaptivePacing` (Pacing scaling logic between 1 FPS and 24 FPS)
    - `TestDCTunnelKeepaliveXOR` (XOR keepalive and sequence synchronization)
-2. **Headless Compilations**: Both `headless-bale-creator` and `headless-bale-joiner` build structures are fully verified under Go 1.25.0.
+2. **Headless Compilations**: Both `bale-free-creator` and `headless-bale-joiner` build structures are fully verified under Go 1.25.0.
 3. **Desktop Joiner Compilations**: Binaries build perfectly.
 4. **No GitHub Actions**: Checked the repository and verified that no GitHub Action workflows exist, fulfilling the localized control constraints.
 

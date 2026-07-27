@@ -33,19 +33,19 @@ The headless Creator authenticates with cookies exported from a desktop Creator 
 
 ### 2. Download the binary
 
-From [GitHub Releases](https://github.com/kulikov0/whitelist-bypass-iran/releases), download the matching `headless-bale-creator-linux-*` binary for your server architecture:
+From [GitHub Releases](https://github.com/kulikov0/whitelist-bypass-iran/releases), download the matching `bale-free-creator-linux-*` binary for your server architecture:
 
 ```sh
 # Example: x64 server
-wget -O /usr/local/bin/headless-bale-creator \
-  https://github.com/kulikov0/whitelist-bypass-iran/releases/latest/download/headless-bale-creator-linux-x64
-sudo chmod +x /usr/local/bin/headless-bale-creator
+wget -O /usr/local/bin/bale-free-creator \
+  https://github.com/kulikov0/whitelist-bypass-iran/releases/latest/download/bale-free-creator-linux-x64
+sudo chmod +x /usr/local/bin/bale-free-creator
 ```
 
 ### 3. Run
 
 ```sh
-/usr/local/bin/headless-bale-creator \
+/usr/local/bin/bale-free-creator \
   --cookies /etc/whitelist-bypass/bale-cookies.json \
   --write-file /var/run/whitelist-bypass/call.txt
 ```
@@ -72,7 +72,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/headless-bale-creator \
+ExecStart=/usr/local/bin/bale-free-creator \
   --cookies /etc/whitelist-bypass/bale-cookies.json \
   --write-file /var/run/whitelist-bypass/call.txt \
   --resources default

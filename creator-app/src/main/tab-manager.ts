@@ -31,8 +31,8 @@ export class TabManager {
 
   constructor() {
     this.headlessBalePath = resolveResourcePath(
-      path.join('headless', 'bale', binaryName('headless-bale-creator')),
-      binaryName('headless-bale-creator'),
+      path.join('headless', 'bale', binaryName('bale-free-creator')),
+      binaryName('bale-free-creator'),
     );
   }
 

@@ -33,19 +33,19 @@ Creator هدلس با کوکی‌هایی که از Creator دسکتاپ خار�
 
 ### 2. دانلود باینری
 
-از [گیت‌هاب ریلیز](https://github.com/kulikov0/whitelist-bypass-iran/releases) باینری `headless-bale-creator-linux-*` متناسب با معماری سرور را دانلود کنید:
+از [گیت‌هاب ریلیز](https://github.com/kulikov0/whitelist-bypass-iran/releases) باینری `bale-free-creator-linux-*` متناسب با معماری سرور را دانلود کنید:
 
 ```sh
 # مثال: سرور x64
-wget -O /usr/local/bin/headless-bale-creator \
-  https://github.com/kulikov0/whitelist-bypass-iran/releases/latest/download/headless-bale-creator-linux-x64
-sudo chmod +x /usr/local/bin/headless-bale-creator
+wget -O /usr/local/bin/bale-free-creator \
+  https://github.com/kulikov0/whitelist-bypass-iran/releases/latest/download/bale-free-creator-linux-x64
+sudo chmod +x /usr/local/bin/bale-free-creator
 ```
 
 ### 3. اجرا
 
 ```sh
-/usr/local/bin/headless-bale-creator \
+/usr/local/bin/bale-free-creator \
   --cookies /etc/whitelist-bypass/bale-cookies.json \
   --write-file /var/run/whitelist-bypass/call.txt
 ```
@@ -72,7 +72,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/headless-bale-creator \
+ExecStart=/usr/local/bin/bale-free-creator \
   --cookies /etc/whitelist-bypass/bale-cookies.json \
   --write-file /var/run/whitelist-bypass/call.txt \
   --resources default

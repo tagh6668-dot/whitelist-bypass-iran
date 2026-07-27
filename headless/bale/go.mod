@@ -1,4 +1,4 @@
-module headless-bale-creator
+module bale-free-creator
 
 go 1.24.0
 

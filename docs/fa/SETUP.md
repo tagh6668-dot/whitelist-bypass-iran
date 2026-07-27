@@ -54,7 +54,7 @@
 ### اجرا
 
 ```sh
-./headless-bale-creator --cookies bale-cookies.json
+./bale-free-creator --cookies bale-cookies.json
 ```
 
 Creator یک تماس می‌سازد و لینک اتصال را در لاگ چاپ می‌کند. آن لینک را به Joiner بفرستید.

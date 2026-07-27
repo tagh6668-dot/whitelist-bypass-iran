@@ -54,7 +54,7 @@ Cookies are required to authenticate against Bale. Export them from the desktop 
 ### Running
 
 ```sh
-./headless-bale-creator --cookies bale-cookies.json
+./bale-free-creator --cookies bale-cookies.json
 ```
 
 The Creator creates a call and prints the join link to the log. Send that link to the Joiner.

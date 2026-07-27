@@ -1,5 +1,5 @@
 #!/bin/sh
-# Two headless-bale-creator instances against the same call: first creates,
+# Two bale-free-creator instances against the same call: first creates,
 # second joins by re-running with the same call_id (when the binary supports
 # --call-id). Until then this test creates two independent calls and verifies
 # both reach publisher connected; the SOCKS5 e2e probe is skipped because the
@@ -11,7 +11,7 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-CREATOR="$ROOT/headless/bale/headless-bale-creator"
+CREATOR="$ROOT/headless/bale/bale-free-creator"
 COOKIES="${1:-$ROOT/bale-cookies.json}"
 SETTLE_TIMEOUT=60
 

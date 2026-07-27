@@ -30,7 +30,7 @@
       "icon": "resources/icon.icns",
       "extraResources": [
         { "from": "../relay/relay-darwin", "to": "relay" },
-        { "from": "../headless/headless-bale-darwin", "to": "headless-bale-creator" }
+        { "from": "../headless/headless-bale-darwin", "to": "bale-free-creator" }
       ]
     },
     "win": {
@@ -39,7 +39,7 @@
       "icon": "resources/icon.ico",
       "extraResources": [
         { "from": "../relay/relay-bundle.exe", "to": "relay.exe" },
-        { "from": "../headless/headless-bale-bundle.exe", "to": "headless-bale-creator.exe" }
+        { "from": "../headless/headless-bale-bundle.exe", "to": "bale-free-creator.exe" }
       ]
     },
     "linux": {
@@ -47,7 +47,7 @@
       "icon": "resources/icon.png",
       "extraResources": [
         { "from": "../relay/relay-bundle", "to": "relay" },
-        { "from": "../headless/headless-bale-bundle", "to": "headless-bale-creator" }
+        { "from": "../headless/headless-bale-bundle", "to": "bale-free-creator" }
       ]
     }
   }

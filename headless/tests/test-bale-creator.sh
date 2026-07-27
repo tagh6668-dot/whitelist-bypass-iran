@@ -1,5 +1,5 @@
 #!/bin/sh
-# Smoke test for headless-bale-creator: spawn the binary, verify it creates a
+# Smoke test for bale-free-creator: spawn the binary, verify it creates a
 # call link via Bale next-ws, joins LiveKit and reaches publisher PC connected.
 #
 # Usage:
@@ -9,11 +9,11 @@
 set -u
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-CREATOR="$ROOT/headless/bale/headless-bale-creator"
+CREATOR="$ROOT/headless/bale/bale-free-creator"
 COOKIES="${1:-$ROOT/bale-cookies.json}"
 SETTLE_TIMEOUT=60
 
-[ -x "$CREATOR" ] || { echo "FAIL: $CREATOR not built (cd headless/bale && go build -o headless-bale-creator)" >&2; exit 2; }
+[ -x "$CREATOR" ] || { echo "FAIL: $CREATOR not built (cd headless/bale && go build -o bale-free-creator)" >&2; exit 2; }
 [ -r "$COOKIES" ] || { echo "FAIL: cookies file not readable: $COOKIES" >&2; exit 2; }
 
 LOG=$(mktemp -t bale-c.XXXXXX.log)
@@ -24,7 +24,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "=== headless-bale-creator ==="
+echo "=== bale-free-creator ==="
 "$CREATOR" --cookies "$COOKIES" --resources default > "$LOG" 2>&1 &
 PID=$!
 
