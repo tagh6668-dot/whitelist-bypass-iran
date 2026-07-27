@@ -83,7 +83,7 @@ func DecodeFrames(data []byte, cb func(connID uint32, msgType byte, payload []by
 		if n <= 0 {
 			return // Not enough bytes to decode frameLen or invalid uvarint
 		}
-		if int(remLen) > len(data)-n {
+		if remLen > uint64(len(data)-n) {
 			return // Incomplete frame
 		}
 		frameData := data[n : n+int(remLen)]
