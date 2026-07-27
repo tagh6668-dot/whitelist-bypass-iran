@@ -67,10 +67,12 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease
 
-      - name: Build Bale Free Creator for Ubuntu
+      - name: Build Bale Free Creator and Joiner for Ubuntu
         run: |
           go -C headless/bale mod tidy
-          go -C headless/bale build -trimpath -ldflags="-s -w" -o bale-free-creator-linux-x64 .
+          go -C headless/bale build -trimpath -ldflags="-s -w -checklinkname=0" -o bale-free-creator-linux-x64 .
+          go -C headless/bale-joiner mod tidy
+          go -C headless/bale-joiner build -trimpath -ldflags="-s -w -checklinkname=0" -o headless-bale-joiner-linux-x64 .
 
       - name: Prepare Release Artifacts
         run: |
@@ -79,6 +81,8 @@ jobs:
           cp android-app/app/build/outputs/apk/release/app-release.apk release-artifacts/whitelist-bypass-v8a.apk
           # Copy the bale free creator binary
           cp headless/bale/bale-free-creator-linux-x64 release-artifacts/bale-free-creator-linux-x64
+          # Copy the bale joiner binary
+          cp headless/bale-joiner/headless-bale-joiner-linux-x64 release-artifacts/headless-bale-joiner-linux-x64
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
@@ -103,5 +107,6 @@ jobs:
           files: |
             release-artifacts/whitelist-bypass-v8a.apk
             release-artifacts/bale-free-creator-linux-x64
+            release-artifacts/headless-bale-joiner-linux-x64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
