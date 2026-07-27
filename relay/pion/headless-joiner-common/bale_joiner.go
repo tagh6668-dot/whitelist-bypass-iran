@@ -273,6 +273,7 @@ func (j *BaleHeadlessJoiner) RunWithParams(jsonParams string) {
 			j.logFn("[session] start: %v", err)
 			j.Status.EmitStatusError("session: " + err.Error())
 			bridge.Close()
+			sess.Close()
 			time.Sleep(3 * time.Second)
 			continue
 		}

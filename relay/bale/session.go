@@ -452,6 +452,17 @@ func (s *Session) onParticipantUpdate(updates []livekit.ParticipantInfo) {
 }
 
 func (s *Session) Close() {
+	s.mu.Lock()
+	vp8 := s.vp8tun
+	dc := s.dcTun
+	s.mu.Unlock()
+
+	if vp8 != nil {
+		vp8.Stop()
+	}
+	if dc != nil {
+		dc.Close()
+	}
 	if s.lk != nil {
 		s.lk.Close()
 	}
