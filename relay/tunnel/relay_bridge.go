@@ -146,7 +146,7 @@ func (rb *RelayBridge) udpCleanupWorker() {
 }
 
 func (rb *RelayBridge) batchWorker() {
-	const maxBatchSize = 1250
+	const maxBatchSize = 1000
 	const flushInterval = 4 * time.Millisecond
 	buf := make([]byte, 0, maxBatchSize+256)
 
@@ -361,13 +361,12 @@ func (rb *RelayBridge) handleJoinerMessage(connID uint32, msgType byte, payload 
 			}
 		}
 
-		hdr := uc.socksHdr
+		hdr, err := BuildSocksHeader(raddrStr)
+		if err != nil || len(hdr) == 0 {
+			hdr = uc.socksHdr
+		}
 		if len(hdr) == 0 {
-			var err error
-			hdr, err = BuildSocksHeader(raddrStr)
-			if err != nil {
-				return
-			}
+			return
 		}
 
 		reply := make([]byte, len(hdr)+len(actualPayload))
@@ -658,9 +657,6 @@ func (rb *RelayBridge) handleSOCKS(conn net.Conn) {
 	rb.conns.Store(id, sc)
 
 	targetHost := host
-	if route == "proxy" && sniffedHost != host {
-		targetHost = sniffedHost
-	}
 
 	rb.logFn("relay: SOCKS CONNECT %d -> %s", id, common.MaskAddr(targetHost))
 	rb.send(id, MsgConnect, []byte(targetHost))
@@ -833,7 +829,7 @@ func (rb *RelayBridge) handleUDPAssociate(tcpConn net.Conn) {
 				continue
 			}
 
-			flowKey := addr.String()
+			flowKey := fmt.Sprintf("%s->%s", addr.String(), dstAddr)
 
 			var id uint32
 			if val, ok := rb.flowToID.Load(flowKey); ok {
