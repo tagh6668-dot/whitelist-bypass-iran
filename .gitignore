@@ -6,3 +6,7 @@ cookies*.json
 relay/relay
 whitelist-experiments/
 release-artifacts/
+headless/bale/bale-free-creator
+headless/bale-joiner/headless-bale-joiner
+joiner-desktop-app/desktop-joiner/desktop-joiner-*
+joiner-desktop-app/desktop-joiner/wintun-*.dll
