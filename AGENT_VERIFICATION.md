@@ -1,6 +1,6 @@
 # Agent Optimizations Verification Report
 
-**Date:** July 26, 2026  
+**Date:** July 30, 2026  
 **Author:** Senior Go & WebRTC Performance Engineer (Gemini Agent)  
 **Repository:** `tagh6668-dot/whitelist-bypass-iran`  
 
@@ -42,7 +42,7 @@ All **four core optimizations** requested in `Agent.md` have been fully reviewed
 
 ---
 
-### 4. Varint SOCKS Header Compression
+### 4. Varint SOCKS Frame Header Compression
 - **Location:** `relay/tunnel/protocol.go` (`EncodeFrame`, `DecodeFrames`)
 - **Implementation:**
   - Uses Go `binary.Uvarint` encoding for `connID` and `frameLen`.
