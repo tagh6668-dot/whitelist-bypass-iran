@@ -90,11 +90,9 @@ func DecodeFrames(data []byte, cb func(connID uint32, msgType byte, payload []by
 
 		// Decode connID
 		connID64, m := binary.Uvarint(frameData)
-		if m <= 0 {
-			return
-		}
-		if m+1 > len(frameData) {
-			return
+		if m <= 0 || m+1 > len(frameData) {
+			data = data[n+int(remLen):]
+			continue
 		}
 		msgType := frameData[m]
 		payload := frameData[m+1:]

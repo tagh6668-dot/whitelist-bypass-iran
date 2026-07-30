@@ -299,9 +299,10 @@ func (rb *RelayBridge) send(connID uint32, msgType byte, payload []byte) {
 	select {
 	case rb.batchChan <- frame:
 	default:
-		if !rb.closed.Load() {
-			rb.tunnel.SendData(frame)
+		if rb.closed.Load() {
+			return
 		}
+		rb.batchChan <- frame
 	}
 }
 
