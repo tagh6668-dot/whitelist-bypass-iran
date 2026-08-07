@@ -342,6 +342,9 @@ func (rt *ReconnectingTunnel) UpdateTunnel(newTun tunnel.DataTunnel) {
 		if rt.onData != nil {
 			newTun.SetOnData(rt.onData)
 		}
+		if rt.onClose != nil {
+			newTun.SetOnClose(rt.onClose)
+		}
 		if rt.fps > 0 || rt.batch > 0 {
 			newTun.Reconfigure(rt.fps, rt.batch)
 		}
@@ -370,7 +373,11 @@ func (rt *ReconnectingTunnel) SetOnData(fn func([]byte)) {
 func (rt *ReconnectingTunnel) SetOnClose(fn func()) {
 	rt.mu.Lock()
 	rt.onClose = fn
+	active := rt.active
 	rt.mu.Unlock()
+	if active != nil {
+		active.SetOnClose(fn)
+	}
 }
 
 func (rt *ReconnectingTunnel) Reconfigure(fps, batch int) {
