@@ -49,7 +49,7 @@ All requirements have been fully verified, tested, and confirmed in the reposito
 
 ## Verification & Test Execution Results
 
-All unit tests pass successfully:
+All unit tests pass successfully under Go 1.24.0:
 - `TestVarintProtocolEncoding`: PASSED
 - `TestVarintMultipleFramesDecoding`: PASSED
 - `TestRelayBridgeUDPPersistence`: PASSED
